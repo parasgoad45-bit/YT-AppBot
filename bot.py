@@ -17,46 +17,55 @@ YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-user_screenshots = {}
 
 async def verify_with_gemini(image_bytes: bytes) -> bool:
-    """Gemini se verify karo ki screenshot mein Jugadu Baba channel subscribed hai ya nahi"""
     try:
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
+        # Detect image type
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            mime_type = "image/png"
+        else:
+            mime_type = "image/jpeg"
+
         prompt = (
-            f"Look at this image carefully. This may be a screenshot of a YouTube channel page. "
-            f"I need to know if the person is subscribed to '{YOUTUBE_CHANNEL}' YouTube channel. "
-            f"Look for any of these signs of subscription: "
-            f"1) A button saying 'Subscribed' with a checkmark or bell icon "
-            f"2) A dropdown arrow next to 'Subscribed' text "
-            f"3) Bell notification options visible (All, Personalized, None, Unsubscribe) "
-            f"4) Any indication the subscribe action is already done. "
-            f"The screenshot might be zoomed in or partial - that's okay. "
-            f"If you see ANY of these subscription indicators, answer YES. "
-            f"Only answer NO if the button clearly says 'Subscribe' (not subscribed). "
-            f"Reply with only YES or NO."
+            "Look at this image very carefully. "
+            "This is a screenshot from a mobile phone. "
+            "I need to check if this person has subscribed to a YouTube channel. "
+            "Look for ANY of these clues: "
+            "- Text that says 'Subscribed' anywhere in the image "
+            "- A bell icon with dropdown arrow next to subscription button "
+            "- Notification options like 'All', 'Personalized', 'None', 'Unsubscribe' visible "
+            "- The word 'Unsubscribe' anywhere (means they ARE subscribed) "
+            "Even if the image is a screenshot of a screenshot, still check carefully. "
+            "If you see ANY sign of subscription, reply YES. "
+            "Only reply NO if you see a plain 'Subscribe' button with no subscription indicators. "
+            "Reply with only the word YES or NO, nothing else."
         )
 
         payload = {
             "contents": [
                 {
                     "parts": [
-                        {"text": prompt},
                         {
                             "inline_data": {
-                                "mime_type": "image/jpeg",
+                                "mime_type": mime_type,
                                 "data": image_b64,
                             }
                         },
+                        {"text": prompt},
                     ]
                 }
-            ]
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 5,
+            }
         }
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GEMINI_API_KEY}"
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=45) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             result = response.json()
@@ -71,7 +80,6 @@ async def verify_with_gemini(image_bytes: bytes) -> bool:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command handler"""
     user = update.effective_user
     welcome_text = (
         f"👋 Hello {user.first_name}!\n\n"
@@ -88,24 +96,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Screenshot receive karo aur verify karo"""
     user_id = update.effective_user.id
 
     await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
 
-    # Photo download karo
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(file.file_path)
         image_bytes = response.content
 
-    # Gemini se verify karo
     is_subscribed = await verify_with_gemini(image_bytes)
 
     if is_subscribed:
-        # Subscribed hai - buttons dikhao
         keyboard = [
             [
                 InlineKeyboardButton("✅ Yes, mujhe link chahiye!", callback_data=f"give_link_{user_id}"),
@@ -121,7 +125,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
     else:
-        # Subscribed nahi hai
         await update.message.reply_text(
             "❌ *Subscribe nahi dikh raha!*\n\n"
             f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
@@ -132,7 +135,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Button press handle karo"""
     query = update.callback_query
     await query.answer()
 
@@ -152,7 +154,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Text message handle karo"""
     await update.message.reply_text(
         "📸 Bhai, screenshot bhejo na!\n\n"
         f"Pehle *{YOUTUBE_CHANNEL}* subscribe karo, phir screenshot yahan bhejo.",
