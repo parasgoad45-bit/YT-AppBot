@@ -25,9 +25,16 @@ async def verify_with_gemini(image_bytes: bytes) -> bool:
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
         prompt = (
-            f"Look at this YouTube screenshot carefully. "
-            f"Is the user subscribed to the YouTube channel named '{YOUTUBE_CHANNEL}' (@JugaduBaba-bmw)? "
-            f"Check if the subscribe button shows 'Subscribed' or similar text. "
+            f"Look at this image carefully. This may be a screenshot of a YouTube channel page. "
+            f"I need to know if the person is subscribed to '{YOUTUBE_CHANNEL}' YouTube channel. "
+            f"Look for any of these signs of subscription: "
+            f"1) A button saying 'Subscribed' with a checkmark or bell icon "
+            f"2) A dropdown arrow next to 'Subscribed' text "
+            f"3) Bell notification options visible (All, Personalized, None, Unsubscribe) "
+            f"4) Any indication the subscribe action is already done. "
+            f"The screenshot might be zoomed in or partial - that's okay. "
+            f"If you see ANY of these subscription indicators, answer YES. "
+            f"Only answer NO if the button clearly says 'Subscribe' (not subscribed). "
             f"Reply with only YES or NO."
         )
 
@@ -172,4 +179,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
+    
