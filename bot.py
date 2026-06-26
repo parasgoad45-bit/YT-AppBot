@@ -13,7 +13,7 @@ YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 UPI_ID = "parasgour1044@ybl"
 UPI_NAME = "Paras Gour"
 AMOUNT = "1"
-QR_IMAGE_PATH = "qr.png"
+QR_IMAGE_PATH = "Screenshot_20260626_123151.jpg"
 LINK_DELETE_SECONDS = 30
 # ================================
 
@@ -274,3 +274,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+                          
