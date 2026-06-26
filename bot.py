@@ -1,7 +1,6 @@
 import os
 import logging
 import base64
-import asyncio
 import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -18,29 +17,33 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
+async def download_file(file_path: str) -> bytes:
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(file_path)
+        return response.content
+
+
 async def verify_with_gemini(image_bytes: bytes) -> bool:
     try:
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-        # Detect image type
         if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
             mime_type = "image/png"
+        elif image_bytes[:4] == b'%PDF':
+            mime_type = "application/pdf"
         else:
             mime_type = "image/jpeg"
 
         prompt = (
-            "Look at this image very carefully. "
-            "This is a screenshot from a mobile phone. "
-            "I need to check if this person has subscribed to a YouTube channel. "
-            "Look for ANY of these clues: "
-            "- Text that says 'Subscribed' anywhere in the image "
-            "- A bell icon with dropdown arrow next to subscription button "
-            "- Notification options like 'All', 'Personalized', 'None', 'Unsubscribe' visible "
-            "- The word 'Unsubscribe' anywhere (means they ARE subscribed) "
-            "Even if the image is a screenshot of a screenshot, still check carefully. "
-            "If you see ANY sign of subscription, reply YES. "
-            "Only reply NO if you see a plain 'Subscribe' button with no subscription indicators. "
-            "Reply with only the word YES or NO, nothing else."
+            "This image is a mobile screenshot. It may contain another screenshot inside it. "
+            "Look very carefully at ALL text in the image, including inside any nested screenshots. "
+            "I need to find if the word 'Subscribed' appears ANYWHERE in this image. "
+            "The text 'Subscribed' might be: small, inside another image, partially visible, or in a button. "
+            "Also check for: 'Unsubscribe' option, bell notification menu, or any subscription-related UI. "
+            "The YouTube channel name is 'Jugadu Baba' or '@JugaduBaba-bmw'. "
+            "If you can see 'Subscribed' text OR 'Unsubscribe' option anywhere, answer YES. "
+            "Answer NO only if you see a red/grey 'Subscribe' button with no subscription. "
+            "Answer with only YES or NO."
         )
 
         payload = {
@@ -58,14 +61,14 @@ async def verify_with_gemini(image_bytes: bytes) -> bool:
                 }
             ],
             "generationConfig": {
-                "temperature": 0.1,
+                "temperature": 0.0,
                 "maxOutputTokens": 5,
             }
         }
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GEMINI_API_KEY}"
 
-        async with httpx.AsyncClient(timeout=45) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
             result = response.json()
@@ -95,18 +98,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_and_reply(update: Update, image_bytes: bytes):
     user_id = update.effective_user.id
-
-    await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
-
-    photo = update.message.photo[-1]
-    file = await context.bot.get_file(photo.file_id)
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get(file.file_path)
-        image_bytes = response.content
-
     is_subscribed = await verify_with_gemini(image_bytes)
 
     if is_subscribed:
@@ -117,10 +110,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
         await update.message.reply_text(
-            "✅ *Subscribe Verified!*\n\n"
-            "Kya aap iPhone Movie App ka link lena chahte ho?",
+            "✅ *Subscribe Verified!*\n\nKya aap iPhone Movie App ka link lena chahte ho?",
             reply_markup=reply_markup,
             parse_mode="Markdown",
         )
@@ -129,9 +120,29 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ *Subscribe nahi dikh raha!*\n\n"
             f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
             f"{YOUTUBE_CHANNEL_URL}\n\n"
-            "Subscribe karne ke baad dobara screenshot bhejo! 📸",
+            "Subscribe karne ke baad dobara screenshot bhejo! 📸\n\n"
+            "💡 *Tip:* Screenshot ko *document/file* ke taur pe bhejo — better quality mein verify hoga!",
             parse_mode="Markdown",
         )
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
+    photo = update.message.photo[-1]
+    file = await context.bot.get_file(photo.file_id)
+    image_bytes = await download_file(file.file_path)
+    await process_and_reply(update, image_bytes)
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    doc = update.message.document
+    if doc.mime_type and ("image" in doc.mime_type or "pdf" in doc.mime_type):
+        await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
+        file = await context.bot.get_file(doc.file_id)
+        image_bytes = await download_file(file.file_path)
+        await process_and_reply(update, image_bytes)
+    else:
+        await update.message.reply_text("📸 Bhai, image ya screenshot bhejo!")
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,9 +159,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
     elif query.data == "no_link":
-        await query.edit_message_text(
-            "Theek hai! Jab chahiye tab /start karke wapas aana. 😊"
-        )
+        await query.edit_message_text("Theek hai! Jab chahiye tab /start karke wapas aana. 😊")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,6 +180,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
