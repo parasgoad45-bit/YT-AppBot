@@ -1,13 +1,12 @@
 import os
 import logging
-import base64
 import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 # ============ CONFIG ============
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))  # Tumhara Telegram ID
 REWARD_LINK = "https://apps.apple.com/in/app/mehmandari/id6766165293"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
@@ -16,70 +15,8 @@ YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-async def download_file(file_path: str) -> bytes:
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get(file_path)
-        return response.content
-
-
-async def verify_with_gemini(image_bytes: bytes) -> bool:
-    try:
-        image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-
-        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
-            mime_type = "image/png"
-        elif image_bytes[:4] == b'%PDF':
-            mime_type = "application/pdf"
-        else:
-            mime_type = "image/jpeg"
-
-        prompt = (
-            "This image is a mobile screenshot. It may contain another screenshot inside it. "
-            "Look very carefully at ALL text in the image, including inside any nested screenshots. "
-            "I need to find if the word 'Subscribed' appears ANYWHERE in this image. "
-            "The text 'Subscribed' might be: small, inside another image, partially visible, or in a button. "
-            "Also check for: 'Unsubscribe' option, bell notification menu, or any subscription-related UI. "
-            "The YouTube channel name is 'Jugadu Baba' or '@JugaduBaba-bmw'. "
-            "If you can see 'Subscribed' text OR 'Unsubscribe' option anywhere, answer YES. "
-            "Answer NO only if you see a red/grey 'Subscribe' button with no subscription. "
-            "Answer with only YES or NO."
-        )
-
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": image_b64,
-                            }
-                        },
-                        {"text": prompt},
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.0,
-                "maxOutputTokens": 5,
-            }
-        }
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GEMINI_API_KEY}"
-
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            result = response.json()
-
-        answer = result["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
-        logger.info(f"Gemini response: {answer}")
-        return "YES" in answer
-
-    except Exception as e:
-        logger.error(f"Gemini error: {e}")
-        return False
+# Pending users ka data store karo
+pending_users = {}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,74 +29,123 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"1️⃣ YouTube pe *{YOUTUBE_CHANNEL}* ko Subscribe karo\n"
         f"2️⃣ Subscribe ka screenshot lo\n"
         f"3️⃣ Yahan screenshot bhejo\n"
-        f"4️⃣ Free mein app link pao! 🎉\n\n"
+        f"4️⃣ Admin verify karega aur link milega! 🎉\n\n"
         f"👇 Pehle subscribe karo:\n{YOUTUBE_CHANNEL_URL}"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
-async def process_and_reply(update: Update, image_bytes: bytes):
-    user_id = update.effective_user.id
-    is_subscribed = await verify_with_gemini(image_bytes)
-
-    if is_subscribed:
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Yes, mujhe link chahiye!", callback_data=f"give_link_{user_id}"),
-                InlineKeyboardButton("❌ No", callback_data="no_link"),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "✅ *Subscribe Verified!*\n\nKya aap iPhone Movie App ka link lena chahte ho?",
-            reply_markup=reply_markup,
-            parse_mode="Markdown",
-        )
-    else:
-        await update.message.reply_text(
-            "❌ *Subscribe nahi dikh raha!*\n\n"
-            f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
-            f"{YOUTUBE_CHANNEL_URL}\n\n"
-            "Subscribe karne ke baad dobara screenshot bhejo! 📸\n\n"
-            "💡 *Tip:* Screenshot ko *document/file* ke taur pe bhejo — better quality mein verify hoga!",
-            parse_mode="Markdown",
-        )
-
-
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
-    photo = update.message.photo[-1]
-    file = await context.bot.get_file(photo.file_id)
-    image_bytes = await download_file(file.file_path)
-    await process_and_reply(update, image_bytes)
+    user = update.effective_user
+    user_id = user.id
+
+    await update.message.reply_text("⏳ Screenshot admin ko bheja ja raha hai... thoda wait karo!")
+
+    # Admin ko forward karo with approve/reject buttons
+    pending_users[user_id] = {
+        "name": user.first_name,
+        "username": user.username or "N/A"
+    }
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user_id}"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    caption = (
+        f"🔔 *New Verification Request*\n\n"
+        f"👤 Name: {user.first_name}\n"
+        f"🆔 Username: @{user.username or 'N/A'}\n"
+        f"📌 User ID: `{user_id}`"
+    )
+
+    try:
+        await context.bot.forward_message(
+            chat_id=ADMIN_CHAT_ID,
+            from_chat_id=update.message.chat_id,
+            message_id=update.message.message_id
+        )
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=caption,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+        await update.message.reply_text(
+            "✅ Screenshot admin ko bhej diya gaya!\n\n"
+            "⏳ Admin verify karega, thodi der mein link milega. Wait karo! 🙏"
+        )
+    except Exception as e:
+        logger.error(f"Admin forward error: {e}")
+        await update.message.reply_text("❌ Kuch error aaya! Dobara try karo.")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    if doc.mime_type and ("image" in doc.mime_type or "pdf" in doc.mime_type):
-        await update.message.reply_text("⏳ Screenshot check ho raha hai... thoda wait karo!")
-        file = await context.bot.get_file(doc.file_id)
-        image_bytes = await download_file(file.file_path)
-        await process_and_reply(update, image_bytes)
+    if doc.mime_type and "image" in doc.mime_type:
+        update.message.photo = None
+        await handle_photo(update, context)
     else:
-        await update.message.reply_text("📸 Bhai, image ya screenshot bhejo!")
+        await update.message.reply_text("📸 Bhai, image screenshot bhejo!")
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data.startswith("give_link_"):
-        await query.edit_message_text(
-            f"🎉 *Congratulations!*\n\n"
-            f"Yeh raha tumhara *iPhone Movie App* link:\n\n"
-            f"👇👇👇\n{REWARD_LINK}\n\n"
-            f"Enjoy karo! 🍿\n\n"
-            f"Aur Jugadu Baba ka channel share karna mat bhoolna! 🙏",
-            parse_mode="Markdown",
-        )
-    elif query.data == "no_link":
-        await query.edit_message_text("Theek hai! Jab chahiye tab /start karke wapas aana. 😊")
+    data = query.data
+
+    if data.startswith("approve_"):
+        user_id = int(data.split("_")[1])
+        user_info = pending_users.get(user_id, {})
+
+        # User ko link bhejo
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"🎉 *Congratulations!*\n\n"
+                    f"Tumhara subscription verify ho gaya! ✅\n\n"
+                    f"Yeh raha tumhara *iPhone Movie App* link:\n\n"
+                    f"👇👇👇\n{REWARD_LINK}\n\n"
+                    f"Enjoy karo! 🍿\n\n"
+                    f"Jugadu Baba ka channel share karna mat bhoolna! 🙏"
+                ),
+                parse_mode="Markdown"
+            )
+            await query.edit_message_text(
+                f"✅ Approved! Link bhej diya user ko.\n"
+                f"👤 {user_info.get('name', 'User')} (@{user_info.get('username', 'N/A')})"
+            )
+            pending_users.pop(user_id, None)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data.startswith("reject_"):
+        user_id = int(data.split("_")[1])
+        user_info = pending_users.get(user_id, {})
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ *Screenshot verify nahi hua!*\n\n"
+                    f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
+                    f"{YOUTUBE_CHANNEL_URL}\n\n"
+                    "Sahi screenshot bhejo! 📸"
+                ),
+                parse_mode="Markdown"
+            )
+            await query.edit_message_text(
+                f"❌ Rejected!\n"
+                f"👤 {user_info.get('name', 'User')} (@{user_info.get('username', 'N/A')})"
+            )
+            pending_users.pop(user_id, None)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,9 +158,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
-        raise ValueError("TELEGRAM_BOT_TOKEN environment variable set nahi hai!")
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY environment variable set nahi hai!")
+        raise ValueError("TELEGRAM_BOT_TOKEN set nahi hai!")
+    if ADMIN_CHAT_ID == 0:
+        raise ValueError("ADMIN_CHAT_ID set nahi hai!")
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
