@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 async def verify_with_gemini(image_bytes: bytes) -> dict:
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"inline_data": {"mime_type": "image/jpeg", "data": image_b64}}, {"text": 'Is image mein YouTube subscribe screenshot hai? "Subscribed" button dikh raha hai? Sirf JSON mein jawab do: {"valid": true, "reason": "subscribe dikh raha hai"} ya {"valid": false, "reason": "subscribe nahi dikh raha"}'}]}]}
+payload = {"contents": [{"parts": [{"inline_data": {"mime_type": "image/jpeg", "data": image_b64}}, {"text": "Look at this image. Is there a YouTube Subscribed button visible? Answer only in JSON: {\"valid\": true, \"reason\": \"subs
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, json=payload)
     if response.status_code != 200:
