@@ -140,7 +140,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=uid,
             text=(
                 f"✅ *Subscribe Verified!*\n\n"
-                f"*Step 2️⃣:* Jugadu Baba ke kisi bhi video pe comment karo:\n\n"
+                f"*Step 2️⃣:* Jugadu Baba ke kisi bhi video pe comment karo:\n"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
                 f"💬 Comment: *Working*\n\n"
                 f"Comment karne ke baad screenshot yahan bhejo! 📸"
             ),
