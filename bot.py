@@ -26,10 +26,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👋 Hello {user.first_name}!\n\n"
         f"🎬 *Jugadu Baba Bot* mein aapka swagat hai!\n\n"
-        f"📱 *iPhone Movie App chahiye?*\n\n"
+        f"📱 *iPhone Movie App chahiye? Bas 2 simple steps karo!*\n\n"
         f"*Step 1️⃣:* YouTube pe *{YOUTUBE_CHANNEL}* ko Subscribe karo\n"
         f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-        f"Subscribe karne ke baad screenshot yahan bhejo! 📸",
+        f"✅ Subscribe karne ke baad us page ka *screenshot* yahan bhejo!",
         parse_mode="Markdown"
     )
 
@@ -40,7 +40,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data.get(uid, {}).get("state", "waiting_subscribe")
 
     if state == "waiting_subscribe":
-        await update.message.reply_text("⏳ Screenshot admin ko bheja ja raha hai... wait karo!")
+        await update.message.reply_text("⏳ Subscribe screenshot admin ko bheja ja raha hai... thoda wait karo!")
 
         user_data[uid]["state"] = "pending_subscribe"
 
@@ -65,14 +65,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         await update.message.reply_text(
-            "✅ Subscribe screenshot bhej diya!\n"
-            "⏳ Admin verify karega, wait karo! 🙏"
+            "✅ Screenshot bhej diya admin ko!\n"
+            "⏳ Admin verify karega, thodi der mein next step milega. 🙏"
         )
 
-    elif state == "waiting_comment":
-        await update.message.reply_text("⏳ Comment screenshot admin ko bheja ja raha hai... wait karo!")
+    elif state == "waiting_like":
+        await update.message.reply_text("⏳ Like screenshot admin ko bheja ja raha hai... thoda wait karo!")
 
-        user_data[uid]["state"] = "pending_comment"
+        user_data[uid]["state"] = "pending_like"
 
         await context.bot.forward_message(
             chat_id=ADMIN_CHAT_ID,
@@ -80,22 +80,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=update.message.message_id
         )
         keyboard = [[
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve_comment_{uid}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"reject_comment_{uid}"),
+            InlineKeyboardButton("✅ Approve", callback_data=f"approve_like_{uid}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject_like_{uid}"),
         ]]
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=(
-                f"💬 *Step 2 - Comment Verification*\n\n"
+                f"👍 *Step 2 - Like Verification*\n\n"
                 f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
                 f"🆔 `{uid}`\n\n"
-                f"Kya usne 'Working' comment kiya hai?"
+                f"Kya usne Jugadu Baba ki video ko Like kiya hai?"
             ),
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
         await update.message.reply_text(
-            "✅ Comment screenshot bhej diya!\n"
+            "✅ Like screenshot bhej diya admin ko!\n"
             "⏳ Admin verify karega, link milega jaldi! 🙏"
         )
 
@@ -124,8 +124,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     parts = query.data.split("_")
-    action = parts[0]   # approve / reject
-    step = parts[1]     # sub / comment
+    action = parts[0]
+    step = parts[1]
     uid = int(parts[2])
 
     uinfo = user_data.get(uid, {})
@@ -133,17 +133,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = uinfo.get("username", "N/A")
 
     if action == "approve" and step == "sub":
-        user_data[uid]["state"] = "waiting_comment"
+        user_data[uid]["state"] = "waiting_like"
         await query.edit_message_text(f"✅ Subscribe approved!\n👤 {name} (@{username})")
 
         await context.bot.send_message(
             chat_id=uid,
             text=(
-                f"✅ *Subscribe Verified!*\n\n"
-                f"*Step 2️⃣:* Jugadu Baba ke kisi bhi video pe comment karo:\n"
+                f"✅ *Subscribe Verified! Shukriya!* 🎉\n\n"
+                f"*Step 2️⃣:* Ab Jugadu Baba ke kisi bhi video ko 👍 *Like* karo!\n\n"
                 f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"💬 Comment: *Working*\n\n"
-                f"Comment karne ke baad screenshot yahan bhejo! 📸"
+                f"📌 Video open karo → 👍 Like button dabao\n\n"
+                f"Like karne ke baad us video ka *screenshot* yahan bhejo! 📸"
             ),
             parse_mode="Markdown"
         )
@@ -156,15 +156,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=(
                 f"❌ *Subscribe verify nahi hua!*\n\n"
                 f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
-                f"{YOUTUBE_CHANNEL_URL}\n\n"
-                f"Dobara subscribe screenshot bhejo! 📸"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+                f"Subscribe karne ke baad dobara screenshot bhejo! 📸"
             ),
             parse_mode="Markdown"
         )
 
-    elif action == "approve" and step == "comment":
+    elif action == "approve" and step == "like":
         user_data[uid]["state"] = "done"
-        await query.edit_message_text(f"✅ Comment approved! Link bheja!\n👤 {name} (@{username})")
+        await query.edit_message_text(f"✅ Like approved! Link bheja!\n👤 {name} (@{username})")
 
         sent = await context.bot.send_message(
             chat_id=uid,
@@ -173,8 +173,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Sab verify ho gaya! ✅\n\n"
                 f"Yeh raha tumhara *iPhone Movie App* link:\n\n"
                 f"👇👇👇\n{REWARD_LINK}\n\n"
-                f"⚠️ *Yeh link {LINK_DELETE_SECONDS} second mein delete ho jayega!*\n"
-                f"Jaldi open karo! ⏰"
+                f"⚠️ *Dhyan do — Yeh link sirf {LINK_DELETE_SECONDS} second mein delete ho jayega!*\n"
+                f"Abhi jaldi open karo! ⏰"
             ),
             parse_mode="Markdown"
         )
@@ -183,16 +183,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS)
         )
 
-    elif action == "reject" and step == "comment":
-        user_data[uid]["state"] = "waiting_comment"
-        await query.edit_message_text(f"❌ Comment rejected!\n👤 {name} (@{username})")
+    elif action == "reject" and step == "like":
+        user_data[uid]["state"] = "waiting_like"
+        await query.edit_message_text(f"❌ Like rejected!\n👤 {name} (@{username})")
         await context.bot.send_message(
             chat_id=uid,
             text=(
-                f"❌ *Comment verify nahi hua!*\n\n"
-                f"Jugadu Baba ke kisi bhi video pe yeh comment karo:\n\n"
-                f"💬 *Working*\n\n"
-                f"Comment ka screenshot bhejo! 📸"
+                f"❌ *Like verify nahi hua!*\n\n"
+                f"Jugadu Baba ke kisi bhi video ko 👍 *Like* karo:\n"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+                f"Like karne ke baad dobara screenshot bhejo! 📸"
             ),
             parse_mode="Markdown"
         )
@@ -204,14 +204,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "waiting_subscribe":
         await update.message.reply_text(
-            f"📸 Subscribe screenshot bhejo!\n\n"
-            f"Pehle *{YOUTUBE_CHANNEL}* subscribe karo:\n{YOUTUBE_CHANNEL_URL}",
+            f"📸 Pehle *{YOUTUBE_CHANNEL}* subscribe karo:\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Subscribe ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
-    elif state == "waiting_comment":
+    elif state == "waiting_like":
         await update.message.reply_text(
-            f"📸 Comment screenshot bhejo!\n\n"
-            f"Jugadu Baba ke kisi bhi video pe *Working* comment karo!",
+            f"📸 Jugadu Baba ke kisi bhi video ko 👍 Like karo:\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Like ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
     else:
