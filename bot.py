@@ -173,7 +173,7 @@ async def mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Current mode: *{bot_mode}*", parse_mode="Markdown")
 
 
-
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_data[user.id] = {"state": "choosing_device", "name": user.first_name, "username": user.username or "N/A"}
 
@@ -491,26 +491,4 @@ def main():
     if ADMIN_CHAT_ID == 0:
         raise ValueError("ADMIN_CHAT_ID set nahi hai!")
 
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("automode", automode_cmd))
-    app.add_handler(CommandHandler("manualmode", manualmode_cmd))
-    app.add_handler(CommandHandler("mode", mode_cmd))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-
-    async def post_init(application):
-        asyncio.create_task(morning_dispatcher(application))
-
-    app.post_init = post_init
-
-    logger.info("Bot start ho gaya!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-if __name__ == "__main__":
-    main()
-    
+    app 
