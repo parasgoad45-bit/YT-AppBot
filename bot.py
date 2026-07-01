@@ -3,7 +3,6 @@ import logging
 import asyncio
 import base64
 import httpx
-from datetime import datetime, time as dtime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -17,76 +16,27 @@ YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 LINK_DELETE_SECONDS = 30
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Bot mode: "manual" (admin approves everything by hand) or "auto" (Gemini vision pre-checks screenshots)
 bot_mode = "manual"
-
-# Night queue: admin approval is STILL required manually, always.
-# Only the reward-link DELIVERY gets delayed to morning if approval happens at night.
-NIGHT_START_HOUR = 0   # 12 AM
-NIGHT_END_HOUR = 6     # 6 AM
-MORNING_HOUR = 6        # queued rewards get sent at 6:00 AM
 # ================================
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 user_data = {}
-night_queue = []  # list of dicts: {"uid": int, "text": str}
+user_counter = 0  # Global counter for serial numbers
+uid_to_serial = {}  # uid -> serial number mapping
 
 
-def is_night_time():
-    now = datetime.now().time()
-    return dtime(NIGHT_START_HOUR, 0) <= now < dtime(NIGHT_END_HOUR, 0)
-
-
-async def deliver_or_queue(context, uid, text):
-    """Send reward text now, or queue it for MORNING_HOUR if it's currently night."""
-    if is_night_time():
-        night_queue.append({"uid": uid, "text": text})
-        return False  # queued
-    sent = await context.bot.send_message(chat_id=uid, text=text, parse_mode="Markdown")
-    asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
-    return True  # sent immediately
-
-
-async def delete_message_later_app(app, chat_id, message_id, delay):
-    await asyncio.sleep(delay)
-    try:
-        await app.bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        logger.error(f"Delete error: {e}")
-
-
-async def morning_dispatcher(app):
-    """Background task: every day at MORNING_HOUR, flush queued reward messages."""
-    from datetime import timedelta
-    while True:
-        now = datetime.now()
-        target = now.replace(hour=MORNING_HOUR, minute=0, second=0, microsecond=0)
-        if now >= target:
-            target = target + timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-
-        if night_queue:
-            pending = night_queue.copy()
-            night_queue.clear()
-            for item in pending:
-                try:
-                    sent = await app.bot.send_message(chat_id=item["uid"], text=item["text"], parse_mode="Markdown")
-                    asyncio.create_task(delete_message_later_app(app, item["uid"], sent.message_id, LINK_DELETE_SECONDS))
-                except Exception as e:
-                    logger.error(f"Morning dispatch error for {item['uid']}: {e}")
-            logger.info(f"Morning dispatcher: sent {len(pending)} queued reward(s).")
+def get_serial(uid: int) -> int:
+    """Return existing serial for uid, or assign new one."""
+    global user_counter
+    if uid not in uid_to_serial:
+        user_counter += 1
+        uid_to_serial[uid] = user_counter
+    return uid_to_serial[uid]
 
 
 async def verify_screenshot_with_ai(image_bytes: bytes, expected_type: str) -> dict:
-    """
-    Uses Google Gemini vision to check if a screenshot genuinely shows what it claims.
-    expected_type: "subscribe" or "like"
-    Returns: {"valid": bool, "reason": str}
-    Fails closed (valid=False) on any error, so a broken API never silently lets bad screenshots through.
-    """
     if not GEMINI_API_KEY:
         return {"valid": False, "reason": "AI verification not configured (no API key)"}
 
@@ -113,28 +63,51 @@ async def verify_screenshot_with_ai(image_bytes: bytes, expected_type: str) -> d
         f"gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     )
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                url,
-                json={
-                    "contents": [{
-                        "parts": [
-                            {"text": prompt},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
-                        ]
-                    }]
-                },
-            )
+    max_retries = 3
+    base_delay = 5
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    url,
+                    json={
+                        "contents": [{
+                            "parts": [
+                                {"text": prompt},
+                                {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
+                            ]
+                        }]
+                    },
+                )
+
+            if resp.status_code == 429:
+                if attempt < max_retries - 1:
+                    wait_time = base_delay * (attempt + 1)
+                    logger.warning(f"Gemini rate limited. Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    return {"valid": False, "reason": "AI service busy (rate limited), please try again in a minute"}
+
             data = resp.json()
+
+            if resp.status_code != 200 or "candidates" not in data:
+                error_msg = data.get("error", {}).get("message", "unknown error")
+                logger.error(f"Gemini API error: {error_msg} | Raw: {data}")
+                return {"valid": False, "reason": f"AI check failed ({error_msg}), please use manual review"}
+
             text = data["candidates"][0]["content"]["parts"][0]["text"]
             text = text.replace("```json", "").replace("```", "").strip()
             import json
             parsed = json.loads(text)
             return {"valid": bool(parsed.get("valid")), "reason": parsed.get("reason", "")}
-    except Exception as e:
-        logger.error(f"AI verification error: {e}")
-        return {"valid": False, "reason": "AI check failed, please use manual review"}
+
+        except Exception as e:
+            logger.error(f"AI verification error: {e}")
+            return {"valid": False, "reason": "AI check failed, please use manual review"}
+
+    return {"valid": False, "reason": "AI check failed after retries, please use manual review"}
 
 
 async def automode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,18 +115,10 @@ async def automode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     if not GEMINI_API_KEY:
-        await update.message.reply_text(
-            "⚠️ GEMINI_API_KEY set nahi hai, isliye Auto mode kaam nahi karega.\n"
-            "Manual mode mein hi rehna padega."
-        )
+        await update.message.reply_text("⚠️ GEMINI_API_KEY set nahi hai, Auto mode kaam nahi karega.")
         return
     bot_mode = "auto"
-    await update.message.reply_text(
-        "🤖 *Auto mode ON*\n\n"
-        "Ab screenshots Claude vision se khud check honge. "
-        "Sirf real subscribe/like screenshots hi pass honge, baaki turant reject ho jayenge.",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("🤖 *Auto mode ON*", parse_mode="Markdown")
 
 
 async def manualmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,10 +126,7 @@ async def manualmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     bot_mode = "manual"
-    await update.message.reply_text(
-        "👤 *Manual mode ON*\n\nAb har screenshot aapko khud Approve/Reject karna hoga.",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("👤 *Manual mode ON*", parse_mode="Markdown")
 
 
 async def mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,11 +137,30 @@ async def mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    user_data[user.id] = {"state": "choosing_device", "name": user.first_name, "username": user.username or "N/A"}
+    uid = user.id
+    serial = get_serial(uid)
+
+    user_data[uid] = {
+        "state": "choosing_device",
+        "name": user.first_name,
+        "username": user.username or "N/A",
+        "serial": serial
+    }
+
+    # Notify admin about new user with serial number
+    await context.bot.send_message(
+        chat_id=ADMIN_CHAT_ID,
+        text=(
+            f"🆕 *Naya User — #{serial}*\n\n"
+            f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+            f"🆔 Telegram ID: `{uid}`"
+        ),
+        parse_mode="Markdown"
+    )
 
     keyboard = [[
-        InlineKeyboardButton("🍎 iPhone", callback_data=f"device_iphone_{user.id}"),
-        InlineKeyboardButton("🤖 Android", callback_data=f"device_android_{user.id}"),
+        InlineKeyboardButton("🍎 iPhone", callback_data=f"device_iphone_{uid}"),
+        InlineKeyboardButton("🤖 Android", callback_data=f"device_android_{uid}"),
     ]]
     await update.message.reply_text(
         f"👋 Hello {user.first_name}!\n\n"
@@ -203,6 +184,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     state = user_data.get(uid, {}).get("state", "waiting_subscribe")
+    serial = user_data.get(uid, {}).get("serial", get_serial(uid))
 
     if state not in ("waiting_subscribe", "waiting_like"):
         await update.message.reply_text("⚠️ Abhi screenshot ki zaroorat nahi.\n/start karke dobara shuru karo!")
@@ -223,11 +205,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result = await verify_screenshot_with_ai(img_bytes, expected_type)
 
-        # Always log to admin for audit, regardless of outcome
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=(
                 f"🤖 *Auto-check — {step_label}*\n\n"
+                f"🔢 Serial: *#{serial}*\n"
                 f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
                 f"🆔 `{uid}`\n"
                 f"📱 Device: {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}\n"
@@ -248,7 +230,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Valid — auto-advance same as admin approval would
         if expected_type == "subscribe":
             user_data[uid]["state"] = "waiting_like"
             await update.message.reply_text(
@@ -267,48 +248,43 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Yeh raha tumhara *{device_label}* link:\n\n👇👇👇\n{reward_link}\n\n"
                 f"⚠️ *Yeh link sirf {LINK_DELETE_SECONDS} second mein delete ho jayega!*\nAbhi jaldi open karo! ⏰"
             )
-            sent_now = await deliver_or_queue(context, uid, reward_text)
-            if not sent_now:
-                await update.message.reply_text(
-                    "✅ *Verify ho gaya!* 🎉\n\nAbhi raat ka time hai, isliye reward link *subah 6 baje* "
-                    "automatically bhej diya jayega. 🌙",
-                    parse_mode="Markdown"
-                )
+            sent = await context.bot.send_message(chat_id=uid, text=reward_text, parse_mode="Markdown")
+            asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
         return
 
-    # ----- manual mode (original flow) -----
+    # ============================================================
+    # MANUAL MODE — Subscribe auto-pass, Like needs link approval
+    # ============================================================
+
     if state == "waiting_subscribe":
-        await update.message.reply_text("⏳ Subscribe screenshot admin ko bheja ja raha hai... thoda wait karo!")
-        user_data[uid]["state"] = "pending_subscribe"
+        user_data[uid]["state"] = "waiting_like"
 
         await context.bot.forward_message(
             chat_id=ADMIN_CHAT_ID,
             from_chat_id=update.message.chat_id,
             message_id=update.message.message_id
         )
-        keyboard = [[
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve_sub_{uid}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"reject_sub_{uid}"),
-        ]]
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=(
-                f"🔔 *Step 1 - Subscribe Verification*\n\n"
+                f"👁 *Step 1 - Subscribe Screenshot (FYI)*\n\n"
+                f"🔢 Serial: *#{serial}*\n"
                 f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
                 f"🆔 `{uid}`\n"
                 f"📱 Device: {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}\n\n"
-                f"Kya usne Jugadu Baba ko subscribe kiya hai?"
+                f"✅ Auto-approved, user ko Step 2 bhej diya."
             ),
-            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
         await update.message.reply_text(
-            "✅ Screenshot bhej diya admin ko!\n"
-            "⏳ Admin verify karega, thodi der mein next step milega. 🙏"
+            f"✅ *Subscribe Verify Ho Gaya!* 🎉\n\n"
+            f"*Step 2️⃣:* Ab *{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo!\n\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Like karne ke baad us video ka *screenshot* yahan bhejo! 📸",
+            parse_mode="Markdown"
         )
 
     elif state == "waiting_like":
-        await update.message.reply_text("⏳ Like screenshot admin ko bheja ja raha hai... thoda wait karo!")
         user_data[uid]["state"] = "pending_like"
 
         await context.bot.forward_message(
@@ -317,24 +293,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=update.message.message_id
         )
         keyboard = [[
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve_like_{uid}"),
+            InlineKeyboardButton("✅ Send Link", callback_data=f"approve_like_{uid}"),
             InlineKeyboardButton("❌ Reject", callback_data=f"reject_like_{uid}"),
         ]]
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=(
-                f"👍 *Step 2 - Like Verification*\n\n"
+                f"👍 *Step 2 - Like Screenshot*\n\n"
+                f"🔢 Serial: *#{serial}*\n"
                 f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
                 f"🆔 `{uid}`\n"
                 f"📱 Device: {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}\n\n"
-                f"Kya usne Jugadu Baba ki video ko Like kiya hai?"
+                f"Link bhejna hai?"
             ),
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
         await update.message.reply_text(
-            "✅ Like screenshot bhej diya admin ko!\n"
-            "⏳ Admin verify karega, link milega jaldi! 🙏"
+            "✅ Like screenshot mil gaya!\n"
+            "⏳ Admin link approve karega, thodi der mein milega! 🙏"
         )
 
 
@@ -367,11 +344,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = uinfo.get("name", "User")
     username = uinfo.get("username", "N/A")
     device = uinfo.get("device", "iphone")
+    serial = uinfo.get("serial", uid_to_serial.get(uid, "?"))
     reward_link = IPHONE_REWARD_LINK if device == "iphone" else ANDROID_REWARD_LINK
 
-    # Device selection
     if action == "device":
-        device_choice = step  # iphone or android
+        device_choice = step
         user_data[uid]["device"] = device_choice
         user_data[uid]["state"] = "waiting_subscribe"
 
@@ -385,41 +362,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Subscribe verification
-    if action == "approve" and step == "sub":
-        user_data[uid]["state"] = "waiting_like"
-        await query.edit_message_text(f"✅ Subscribe approved!\n👤 {name} (@{username})")
-
-        await context.bot.send_message(
-            chat_id=uid,
-            text=(
-                f"✅ *Subscribe Verified! Shukriya!* 🎉\n\n"
-                f"*Step 2️⃣:* Ab Jugadu Baba ke kisi bhi video ko 👍 *Like* karo!\n\n"
-                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"📌 Video open karo → 👍 Like button dabao\n\n"
-                f"Like karne ke baad us video ka *screenshot* yahan bhejo! 📸"
-            ),
-            parse_mode="Markdown"
-        )
-
-    elif action == "reject" and step == "sub":
-        user_data[uid]["state"] = "waiting_subscribe"
-        await query.edit_message_text(f"❌ Subscribe rejected!\n👤 {name} (@{username})")
-        await context.bot.send_message(
-            chat_id=uid,
-            text=(
-                f"❌ *Subscribe verify nahi hua!*\n\n"
-                f"Pehle *{YOUTUBE_CHANNEL}* ko subscribe karo:\n"
-                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"Subscribe karne ke baad dobara screenshot bhejo! 📸"
-            ),
-            parse_mode="Markdown"
-        )
-
-    # Like verification
-    elif action == "approve" and step == "like":
+    if action == "approve" and step == "like":
         user_data[uid]["state"] = "done"
-        await query.edit_message_text(f"✅ Like approved! Link bheja!\n👤 {name} (@{username})")
+        await query.edit_message_text(f"✅ Link bheja! #{serial}\n👤 {name} (@{username})")
 
         device_label = "iPhone Movie App" if device == "iphone" else "Android Movie App ka Telegram"
         reward_text = (
@@ -430,27 +375,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ *Yeh link sirf {LINK_DELETE_SECONDS} second mein delete ho jayega!*\n"
             f"Abhi jaldi open karo! ⏰"
         )
-
-        sent_now = await deliver_or_queue(context, uid, reward_text)
-        if not sent_now:
-            # It's night time (12 AM - 6 AM) — admin already approved, but delivery is queued for 6 AM
-            await context.bot.send_message(
-                chat_id=uid,
-                text=(
-                    "✅ *Approve ho gaya!* 🎉\n\n"
-                    "Abhi raat ka time hai, isliye tumhara reward link *subah 6 baje* tak "
-                    "automatically bhej diya jayega. Tab tak ke liye shukriya! 🌙"
-                ),
-                parse_mode="Markdown"
-            )
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"🌙 Night approval queued — {name} (@{username}) ka reward link 6 AM par jayega."
-            )
+        sent = await context.bot.send_message(chat_id=uid, text=reward_text, parse_mode="Markdown")
+        asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
 
     elif action == "reject" and step == "like":
         user_data[uid]["state"] = "waiting_like"
-        await query.edit_message_text(f"❌ Like rejected!\n👤 {name} (@{username})")
+        await query.edit_message_text(f"❌ Like rejected! #{serial}\n👤 {name} (@{username})")
         await context.bot.send_message(
             chat_id=uid,
             text=(
@@ -470,15 +400,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "waiting_subscribe":
         await update.message.reply_text(
             f"📸 Pehle *{YOUTUBE_CHANNEL}* subscribe karo:\n"
-            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-            f"Subscribe ke baad screenshot bhejo!",
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\nSubscribe ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
     elif state == "waiting_like":
         await update.message.reply_text(
             f"📸 Jugadu Baba ke kisi bhi video ko 👍 Like karo:\n"
-            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-            f"Like ke baad screenshot bhejo!",
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\nLike ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
     else:
@@ -498,19 +426,13 @@ def main():
     app.add_handler(CommandHandler("manualmode", manualmode_cmd))
     app.add_handler(CommandHandler("mode", mode_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.Document.IMAGE, handle_document))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    async def post_init(application):
-        asyncio.create_task(morning_dispatcher(application))
-
-    app.post_init = post_init
-
-    logger.info("Bot start ho gaya!")
+    logger.info("Bot starting...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
     main()
-    
