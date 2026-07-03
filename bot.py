@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 IPHONE_REWARD_LINK = "https://apps.apple.com/in/app/mehmandari/id6766165293"
-ANDROID_REWARD_LINK = "https://t.me/jugaduBaba0"
+ANDROID_REWARD_LINK = "https://t.me/jugaduBaba0/97"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 LINK_DELETE_SECONDS = 30
@@ -50,7 +50,7 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         f"Baba tumse bohot prasann hue! 🧙‍♂️✨\n"
         f"Sab verify ho gaya hai. Tumhari imandari dekh ke rona aa gaya! 😂\n\n"
         f"👇 *Neeche dabaao aur maze lo:* 👇\n\n"
-        f"⚠️ *DHYAN SE:* Yeh link sirf `{LINK_DELETE_SECONDS} seconds` mein dhuwan ban ke udd jayega! 💣\n"
+        f"⚠️ *DHYAN SE:* Yeh link sirf `{LINK_DELETE_SECONDS} seconds` mein dhuwan ban ke uuad jayega! 💣\n"
         f"Fatafat click karo, deri mat karna! ⏰"
     )
     
@@ -244,4 +244,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
+                          
