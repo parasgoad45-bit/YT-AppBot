@@ -35,7 +35,7 @@ async def delete_message_later(context, chat_id, message_id, delay):
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
-        logger.error("Delete error: %s", e)
+        logger.error(f"Delete error: {e}")
 
 
 async def send_reward_link(context, uid: int, uinfo: dict):
@@ -45,12 +45,12 @@ async def send_reward_link(context, uid: int, uinfo: dict):
     device_label = "iPhone Movie App" if device == "iphone" else "Android Movie App ka Telegram"
 
     reward_text = (
-        "🎉 *Congratulations " + name + "!*\n\n"
-        "Sab verify ho gaya! ✅\n\n"
-        "Yeh raha tumhara *" + device_label + "* link:\n\n"
-        "👇👇👇\n" + reward_link + "\n\n"
-        "⚠️ *Yeh link sirf " + str(LINK_DELETE_SECONDS) + " second mein delete ho jayega!*\n"
-        "Abhi jaldi open karo! ⏰"
+        f"🎉 *Congratulations {name}!*\n\n"
+        f"Sab verify ho gaya! ✅\n\n"
+        f"Yeh raha tumhara *{device_label}* link:\n\n"
+        f"👇👇👇\n{reward_link}\n\n"
+        f"⚠️ *Yeh link sirf {LINK_DELETE_SECONDS} second mein delete ho jayega!*\n"
+        f"Abhi jaldi open karo! ⏰"
     )
     sent = await context.bot.send_message(chat_id=uid, text=reward_text, parse_mode="Markdown")
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
@@ -66,28 +66,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "name": user.first_name,
         "username": user.username or "N/A",
         "serial": serial,
-        "subscribe_attempts": 0,
-        "like_attempts": 0,
+        "subscribe_attempts": 0,   # Step 1 screenshot attempts
+        "like_attempts": 0,        # Step 2 screenshot attempts
     }
 
     await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=(
-            "🆕 *Naya User — #" + str(serial) + "*\n\n"
-            "👤 " + user.first_name + " (@" + (user.username or "N/A") + ")\n"
-            "🆔 `" + str(uid) + "`"
+            f"🆕 *Naya User — #{serial}*\n\n"
+            f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+            f"🆔 `{uid}`"
         ),
         parse_mode="Markdown"
     )
 
     keyboard = [[
-        InlineKeyboardButton("🍎 iPhone", callback_data="device_iphone_" + str(uid)),
-        InlineKeyboardButton("🤖 Android", callback_data="device_android_" + str(uid)),
+        InlineKeyboardButton("🍎 iPhone", callback_data=f"device_iphone_{uid}"),
+        InlineKeyboardButton("🤖 Android", callback_data=f"device_android_{uid}"),
     ]]
     await update.message.reply_text(
-        "👋 Hello " + user.first_name + "!\n\n"
-        "🎬 *Jugadu Baba Bot* mein aapka swagat hai!\n\n"
-        "📱 *Tumhara phone kaunsa hai?*",
+        f"👋 Hello {user.first_name}!\n\n"
+        f"😎 *Jugadu Baba Bot* me swagat hai!\n\n🍿 Free Movie App unlock karne ke liye bas 2 chhote mission complete karo!\n\n"
+        f"👇 Apna device select karo.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -105,25 +105,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Abhi screenshot ki zaroorat nahi.\n/start karke dobara shuru karo!")
         return
 
-    device_display = "🍎 iPhone" if device == "iphone" else "🤖 Android"
-
+    # ─────────────────────────────────────────
     # STEP 1 — Subscribe
+    # ─────────────────────────────────────────
     if state == "waiting_subscribe":
         attempts = uinfo.get("subscribe_attempts", 0)
 
-        if attempts == 0:
-            user_data[uid]["subscribe_attempts"] = 1
-            await update.message.reply_text(
-                "❌ *Screenshot verify nahi hua!*\n\n"
-                "Pehle *" + YOUTUBE_CHANNEL + "* YouTube channel ko Subscribe karo:\n"
-                "👉 " + YOUTUBE_CHANNEL_URL + "\n\n"
-                "Subscribe ke baad dobara screenshot bhejo! 📸",
-                parse_mode="Markdown"
-            )
-        else:
-            user_data[uid]["state"] = "waiting_like"
-            user_data[uid]["subscribe_attempts"] = 0
+        # Direct approve
+        user_data[uid]["state"] = "waiting_like"
 
+            # Admin ko notify
             await context.bot.forward_message(
                 chat_id=ADMIN_CHAT_ID,
                 from_chat_id=update.message.chat_id,
@@ -132,39 +123,34 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=(
-                    "✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
-                    "🔢 *#" + str(serial) + "*\n"
-                    "👤 " + user.first_name + " (@" + (user.username or "N/A") + ")\n"
-                    "🆔 `" + str(uid) + "`\n"
-                    "📱 " + device_display
+                    f"✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
+                    f"🔢 *#{serial}*\n"
+                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                    f"🆔 `{uid}`\n"
+                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
                 ),
                 parse_mode="Markdown"
             )
 
+            # User ko Step 2 bhejo
             await update.message.reply_text(
-                "✅ *Subscribe Verified!* 🎉\n\n"
-                "*Step 2️⃣:* Ab *" + YOUTUBE_CHANNEL + "* ke kisi bhi video ko 👍 *Like* karo!\n\n"
-                "👉 " + YOUTUBE_CHANNEL_URL + "\n\n"
-                "Like ke baad screenshot bhejo! 📸",
+                f"✅ *Subscribe Verified!* 🎉\n\n"
+                f"*Step 2️⃣:* Ab *{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo!\n\n"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+                f"Like ke baad screenshot bhejo! 📸",
                 parse_mode="Markdown"
             )
 
+    # ─────────────────────────────────────────
     # STEP 2 — Like
+    # ─────────────────────────────────────────
     elif state == "waiting_like":
         attempts = uinfo.get("like_attempts", 0)
 
-        if attempts == 0:
-            user_data[uid]["like_attempts"] = 1
-            await update.message.reply_text(
-                "❌ *Screenshot verify nahi hua!*\n\n"
-                "*" + YOUTUBE_CHANNEL + "* ke kisi bhi video ko 👍 *Like* karo:\n"
-                "👉 " + YOUTUBE_CHANNEL_URL + "\n\n"
-                "Like ke baad dobara screenshot bhejo! 📸",
-                parse_mode="Markdown"
-            )
-        else:
-            user_data[uid]["state"] = "done"
+        # Direct approve
+        user_data[uid]["state"] = "done"
 
+            # Admin ko notify
             await context.bot.forward_message(
                 chat_id=ADMIN_CHAT_ID,
                 from_chat_id=update.message.chat_id,
@@ -173,15 +159,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=(
-                    "✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
-                    "🔢 *#" + str(serial) + "*\n"
-                    "👤 " + user.first_name + " (@" + (user.username or "N/A") + ")\n"
-                    "🆔 `" + str(uid) + "`\n"
-                    "📱 " + device_display
+                    f"✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
+                    f"🔢 *#{serial}*\n"
+                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                    f"🆔 `{uid}`\n"
+                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
                 ),
                 parse_mode="Markdown"
             )
 
+            # User ko reward link bhejo
             await send_reward_link(context, uid, user_data[uid])
 
 
@@ -203,10 +190,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[uid]["device"] = "iphone"
         user_data[uid]["state"] = "waiting_subscribe"
         await query.edit_message_text(
-            "✅ *🍎 iPhone* select kiya!\n\n"
-            "*Step 1️⃣:* YouTube pe *" + YOUTUBE_CHANNEL + "* ko Subscribe karo\n"
-            "👉 " + YOUTUBE_CHANNEL_URL + "\n\n"
-            "Subscribe ke baad screenshot bhejo! 📸",
+            f"✅ *🍎 iPhone* select kiya!\n\n"
+            f"*Step 1️⃣:* YouTube pe *{YOUTUBE_CHANNEL}* ko Subscribe karo\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Subscribe ke baad screenshot bhejo! 📸",
             parse_mode="Markdown"
         )
 
@@ -215,10 +202,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[uid]["device"] = "android"
         user_data[uid]["state"] = "waiting_subscribe"
         await query.edit_message_text(
-            "✅ *🤖 Android* select kiya!\n\n"
-            "*Step 1️⃣:* YouTube pe *" + YOUTUBE_CHANNEL + "* ko Subscribe karo\n"
-            "👉 " + YOUTUBE_CHANNEL_URL + "\n\n"
-            "Subscribe ke baad screenshot bhejo! 📸",
+            f"✅ *🤖 Android* select kiya!\n\n"
+            f"*Step 1️⃣:* YouTube pe *{YOUTUBE_CHANNEL}* ko Subscribe karo\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Subscribe ke baad screenshot bhejo! 📸",
             parse_mode="Markdown"
         )
 
@@ -229,14 +216,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "waiting_subscribe":
         await update.message.reply_text(
-            "📸 *" + YOUTUBE_CHANNEL + "* subscribe karo:\n"
-            "👉 " + YOUTUBE_CHANNEL_URL + "\n\nSubscribe ke baad screenshot bhejo!",
+            f"📸 *{YOUTUBE_CHANNEL}* subscribe karo:\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\nSubscribe ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
     elif state == "waiting_like":
         await update.message.reply_text(
-            "📸 Jugadu Baba ke video ko 👍 Like karo:\n"
-            "👉 " + YOUTUBE_CHANNEL_URL + "\n\nLike ke baad screenshot bhejo!",
+            f"📸 Jugadu Baba ke video ko 👍 Like karo:\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\nLike ke baad screenshot bhejo!",
             parse_mode="Markdown"
         )
     else:
@@ -263,3 +250,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
