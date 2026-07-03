@@ -70,15 +70,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "like_attempts": 0,        # Step 2 screenshot attempts
     }
 
-    await context.bot.send_message(
-        chat_id=ADMIN_CHAT_ID,
-        text=(
-            f"🆕 *Naya User — #{serial}*\n\n"
-            f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
-            f"🆔 `{uid}`"
-        ),
-        parse_mode="Markdown"
-    )
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=(
+                f"🆕 *Naya User — #{serial}*\n\n"
+                f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                f"🆔 `{uid}`"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Admin notification failed: {e}")
 
     keyboard = [[
         InlineKeyboardButton("🍎 iPhone", callback_data=f"device_iphone_{uid}"),
@@ -96,7 +99,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
-    uinfo = user_data.get(uid, {})
+    
+    # SAFE CHECK: Agar user ne seedhe photo bhej di bina /start kiye
+    if uid not in user_data:
+        await update.message.reply_text("⚠️ Pehle bot ko shuru karein!\n/start par click karein. 😊")
+        return
+
+    uinfo = user_data[uid]
     state = uinfo.get("state", "")
     serial = uinfo.get("serial", get_serial(uid))
     device = uinfo.get("device", "unknown")
@@ -112,7 +121,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attempts = uinfo.get("subscribe_attempts", 0)
 
         if attempts == 0:
-            # Pehli baar → Reject
             user_data[uid]["subscribe_attempts"] = 1
             await update.message.reply_text(
                 f"❌ *Screenshot verify nahi hua!*\n\n"
@@ -121,31 +129,31 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Subscribe ke baad dobara screenshot bhejo! 📸",
                 parse_mode="Markdown"
             )
-
         else:
-            # Doosri baar → Auto approve, Step 2 pe bhejo
             user_data[uid]["state"] = "waiting_like"
-            user_data[uid]["subscribe_attempts"] = 0  # reset for next step
+            user_data[uid]["subscribe_attempts"] = 0
 
-            # Admin ko notify
-            await context.bot.forward_message(
-                chat_id=ADMIN_CHAT_ID,
-                from_chat_id=update.message.chat_id,
-                message_id=update.message.message_id
-            )
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=(
-                    f"✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
-                    f"🔢 *#{serial}*\n"
-                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
-                    f"🆔 `{uid}`\n"
-                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
-                ),
-                parse_mode="Markdown"
-            )
+            # Admin Notification (Try-Except taaki bot crash na ho agar admin id galat ho)
+            try:
+                await context.bot.forward_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    from_chat_id=update.message.chat_id,
+                    message_id=update.message.message_id
+                )
+                await context.bot.send_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    text=(
+                        f"✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
+                        f"🔢 *#{serial}*\n"
+                        f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                        f"🆔 `{uid}`\n"
+                        f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"Admin forward failed: {e}")
 
-            # User ko Step 2 bhejo
             await update.message.reply_text(
                 f"✅ *Subscribe Verified!* 🎉\n\n"
                 f"*Step 2️⃣:* Ab *{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo!\n\n"
@@ -161,7 +169,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attempts = uinfo.get("like_attempts", 0)
 
         if attempts == 0:
-            # Pehli baar → Reject
             user_data[uid]["like_attempts"] = 1
             await update.message.reply_text(
                 f"❌ *Screenshot verify nahi hua!*\n\n"
@@ -170,36 +177,35 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Like ke baad dobara screenshot bhejo! 📸",
                 parse_mode="Markdown"
             )
-
         else:
-            # Doosri baar → Auto approve, link bhejo
             user_data[uid]["state"] = "done"
 
-            # Admin ko notify
-            await context.bot.forward_message(
-                chat_id=ADMIN_CHAT_ID,
-                from_chat_id=update.message.chat_id,
-                message_id=update.message.message_id
-            )
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=(
-                    f"✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
-                    f"🔢 *#{serial}*\n"
-                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
-                    f"🆔 `{uid}`\n"
-                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
-                ),
-                parse_mode="Markdown"
-            )
+            try:
+                await context.bot.forward_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    from_chat_id=update.message.chat_id,
+                    message_id=update.message.message_id
+                )
+                await context.bot.send_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    text=(
+                        f"✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
+                        f"🔢 *#{serial}*\n"
+                        f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                        f"🆔 `{uid}`\n"
+                        f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"Admin forward failed: {e}")
 
-            # User ko reward link bhejo
             await send_reward_link(context, uid, user_data[uid])
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    if doc.mime_type and "image" in doc.mime_type:
+    if doc and doc.mime_type and "image" in doc.mime_type:
         await handle_photo(update, context)
     else:
         await update.message.reply_text("📸 Image ya screenshot bhejo!")
@@ -210,8 +216,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    uid = update.effective_user.id
+    if uid not in user_data:
+        await query.message.reply_text("⚠️ Session expired. Dobara /start karein.")
+        return
+
     if data.startswith("device_iphone_"):
-        uid = int(data.replace("device_iphone_", ""))
         user_data[uid]["device"] = "iphone"
         user_data[uid]["state"] = "waiting_subscribe"
         await query.edit_message_text(
@@ -223,7 +233,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data.startswith("device_android_"):
-        uid = int(data.replace("device_android_", ""))
         user_data[uid]["device"] = "android"
         user_data[uid]["state"] = "waiting_subscribe"
         await query.edit_message_text(
@@ -258,8 +267,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not TELEGRAM_BOT_TOKEN:
         raise ValueError("TELEGRAM_BOT_TOKEN set nahi hai!")
-    if ADMIN_CHAT_ID == 0:
-        raise ValueError("ADMIN_CHAT_ID set nahi hai!")
+    if not ADMIN_CHAT_ID or ADMIN_CHAT_ID == 0:
+        raise ValueError("ADMIN_CHAT_ID set nahi hai ya galat hai!")
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
