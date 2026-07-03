@@ -66,8 +66,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "name": user.first_name,
         "username": user.username or "N/A",
         "serial": serial,
-        "subscribe_attempts": 0,   # Step 1 screenshot attempts
-        "like_attempts": 0,        # Step 2 screenshot attempts
     }
 
     try:
@@ -100,7 +98,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     
-    # SAFE CHECK: Agar user ne seedhe photo bhej di bina /start kiye
     if uid not in user_data:
         await update.message.reply_text("⚠️ Pehle bot ko shuru karein!\n/start par click karein. 😊")
         return
@@ -115,92 +112,70 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ─────────────────────────────────────────
-    # STEP 1 — Subscribe
+    # STEP 1 — Subscribe (Ab pehli baar me hi approve hoga)
     # ─────────────────────────────────────────
     if state == "waiting_subscribe":
-        attempts = uinfo.get("subscribe_attempts", 0)
+        user_data[uid]["state"] = "waiting_like"
 
-        if attempts == 0:
-            user_data[uid]["subscribe_attempts"] = 1
-            await update.message.reply_text(
-                f"❌ *Screenshot verify nahi hua!*\n\n"
-                f"Pehle *{YOUTUBE_CHANNEL}* YouTube channel ko Subscribe karo:\n"
-                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"Subscribe ke baad dobara screenshot bhejo! 📸",
+        # Admin ko notify karein
+        try:
+            await context.bot.forward_message(
+                chat_id=ADMIN_CHAT_ID,
+                from_chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=(
+                    f"✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
+                    f"🔢 *#{serial}*\n"
+                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                    f"🆔 `{uid}`\n"
+                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
+                ),
                 parse_mode="Markdown"
             )
-        else:
-            user_data[uid]["state"] = "waiting_like"
-            user_data[uid]["subscribe_attempts"] = 0
+        except Exception as e:
+            logger.error(f"Admin forward failed: {e}")
 
-            # Admin Notification (Try-Except taaki bot crash na ho agar admin id galat ho)
-            try:
-                await context.bot.forward_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    from_chat_id=update.message.chat_id,
-                    message_id=update.message.message_id
-                )
-                await context.bot.send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=(
-                        f"✅ *Step 1 - Subscribe AUTO APPROVED*\n\n"
-                        f"🔢 *#{serial}*\n"
-                        f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
-                        f"🆔 `{uid}`\n"
-                        f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
-                    ),
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                logger.error(f"Admin forward failed: {e}")
-
-            await update.message.reply_text(
-                f"✅ *Subscribe Verified!* 🎉\n\n"
-                f"*Step 2️⃣:* Ab *{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo!\n\n"
-                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"Like ke baad screenshot bhejo! 📸",
-                parse_mode="Markdown"
-            )
+        # User ko Step 2 pe bhejein
+        await update.message.reply_text(
+            f"✅ *Subscribe Verified!* 🎉\n\n"
+            f"*Step 2️⃣:* Ab *{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo!\n\n"
+            f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+            f"Like ke baad screenshot bhejo! 📸",
+            parse_mode="Markdown"
+        )
 
     # ─────────────────────────────────────────
-    # STEP 2 — Like
+    # STEP 2 — Like (Ab pehli baar me hi approve hoga)
     # ─────────────────────────────────────────
     elif state == "waiting_like":
-        attempts = uinfo.get("like_attempts", 0)
+        user_data[uid]["state"] = "done"
 
-        if attempts == 0:
-            user_data[uid]["like_attempts"] = 1
-            await update.message.reply_text(
-                f"❌ *Screenshot verify nahi hua!*\n\n"
-                f"*{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo:\n"
-                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
-                f"Like ke baad dobara screenshot bhejo! 📸",
+        # Admin ko notify karein
+        try:
+            await context.bot.forward_message(
+                chat_id=ADMIN_CHAT_ID,
+                from_chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=(
+                    f"✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
+                    f"🔢 *#{serial}*\n"
+                    f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
+                    f"🆔 `{uid}`\n"
+                    f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
+                ),
                 parse_mode="Markdown"
             )
-        else:
-            user_data[uid]["state"] = "done"
+        except Exception as e:
+            logger.error(f"Admin forward failed: {e}")
 
-            try:
-                await context.bot.forward_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    from_chat_id=update.message.chat_id,
-                    message_id=update.message.message_id
-                )
-                await context.bot.send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=(
-                        f"✅ *Step 2 - Like AUTO APPROVED — Link bheja!*\n\n"
-                        f"🔢 *#{serial}*\n"
-                        f"👤 {user.first_name} (@{user.username or 'N/A'})\n"
-                        f"🆔 `{uid}`\n"
-                        f"📱 {'🍎 iPhone' if device == 'iphone' else '🤖 Android'}"
-                    ),
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                logger.error(f"Admin forward failed: {e}")
-
-            await send_reward_link(context, uid, user_data[uid])
+        # User ko reward link bhejein
+        await send_reward_link(context, uid, user_data[uid])
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
