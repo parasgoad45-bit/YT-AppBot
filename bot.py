@@ -86,8 +86,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]]
     await update.message.reply_text(
         f"👋 Hello {user.first_name}!\n\n"
-        f"😎 *Jugadu Baba Bot* me swagat hai!\n\n🍿 Free Movie App unlock karne ke liye bas 2 chhote mission complete karo!\n\n"
-        f"👇 Apna device select karo.",
+        f"🎬 *Jugadu Baba Bot* mein aapka swagat hai!\n\n"
+        f"📱 *Tumhara phone kaunsa hai?*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -111,8 +111,21 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "waiting_subscribe":
         attempts = uinfo.get("subscribe_attempts", 0)
 
-        # Direct approve
-        user_data[uid]["state"] = "waiting_like"
+        if attempts == 0:
+            # Pehli baar → Reject
+            user_data[uid]["subscribe_attempts"] = 1
+            await update.message.reply_text(
+                f"❌ *Screenshot verify nahi hua!*\n\n"
+                f"Pehle *{YOUTUBE_CHANNEL}* YouTube channel ko Subscribe karo:\n"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+                f"Subscribe ke baad dobara screenshot bhejo! 📸",
+                parse_mode="Markdown"
+            )
+
+        else:
+            # Doosri baar → Auto approve, Step 2 pe bhejo
+            user_data[uid]["state"] = "waiting_like"
+            user_data[uid]["subscribe_attempts"] = 0  # reset for next step
 
             # Admin ko notify
             await context.bot.forward_message(
@@ -147,8 +160,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif state == "waiting_like":
         attempts = uinfo.get("like_attempts", 0)
 
-        # Direct approve
-        user_data[uid]["state"] = "done"
+        if attempts == 0:
+            # Pehli baar → Reject
+            user_data[uid]["like_attempts"] = 1
+            await update.message.reply_text(
+                f"❌ *Screenshot verify nahi hua!*\n\n"
+                f"*{YOUTUBE_CHANNEL}* ke kisi bhi video ko 👍 *Like* karo:\n"
+                f"👉 {YOUTUBE_CHANNEL_URL}\n\n"
+                f"Like ke baad dobara screenshot bhejo! 📸",
+                parse_mode="Markdown"
+            )
+
+        else:
+            # Doosri baar → Auto approve, link bhejo
+            user_data[uid]["state"] = "done"
 
             # Admin ko notify
             await context.bot.forward_message(
