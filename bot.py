@@ -1,12 +1,15 @@
 import os
 import logging
 import asyncio
+import base64
+import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 # ============ CONFIG ============
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
+OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
 IPHONE_REWARD_LINK = "https://apps.apple.com/in/app/mehmandari/id6766165293"
 ANDROID_REWARD_LINK = "https://t.me/jugaduBaba0/97"
 YOUTUBE_CHANNEL = "Jugadu Baba"
@@ -17,10 +20,41 @@ LINK_DELETE_SECONDS = 30
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+SUBSCRIBE_KEYWORDS = ["subscribed", "subscribers", "सदस्यता"]
+LIKE_KEYWORDS = ["liked", "like", "पसंद", "share", "remix", "comment"]
+
+async def verify_image_via_ocr(photo_bytes: bytes, keywords: list) -> tuple[bool, str]:
+    try:
+        b64 = base64.b64encode(photo_bytes).decode("utf-8")
+        payload = {
+            "apikey": OCR_API_KEY,
+            "base64Image": f"data:image/jpeg;base64,{b64}",
+            "language": "eng",
+            "isOverlayRequired": False,
+            "detectOrientation": True,
+            "scale": True,
+            "OCREngine": 2,
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post("https://api.ocr.space/parse/image", data=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        parsed = data.get("ParsedResults", [])
+        if not parsed:
+            return False, ""
+
+        full_text = " ".join(r.get("ParsedText", "") for r in parsed).lower()
+        is_verified = any(kw.lower() in full_text for kw in keywords)
+        return is_verified, full_text
+
+    except Exception as e:
+        logger.error(f"OCR verification error: {e}")
+        return False, ""
+
 user_data = {}
 user_counter = 0
 uid_to_serial = {}
-
 
 def get_serial(uid: int) -> int:
     global user_counter
@@ -29,14 +63,12 @@ def get_serial(uid: int) -> int:
         uid_to_serial[uid] = user_counter
     return uid_to_serial[uid]
 
-
 async def delete_message_later(context, chat_id, message_id, delay):
     await asyncio.sleep(delay)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         logger.error(f"Delete error: {e}")
-
 
 async def send_reward_link(context, uid: int, uinfo: dict):
     device = uinfo.get("device", "iphone")
@@ -63,7 +95,6 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         parse_mode="Markdown"
     )
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -106,7 +137,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
@@ -125,16 +155,37 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ─────────────────────────────────────────
-    # STEP 1 — Subscribe Verified
+    # STEP 1 — Subscribe Verified via OCR
     # ─────────────────────────────────────────
     if state == "waiting_subscribe":
+        processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
+
+        photo_file = await update.message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+        is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), SUBSCRIBE_KEYWORDS)
+
+        try:
+            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=processing_msg.message_id)
+        except Exception:
+            pass
+
+        if not is_verified:
+            await update.message.reply_text(
+                "❌ *Arey bhai! Yeh kya bheja?*\n\n"
+                "🔎 Baba ke scanner ne koi subscription nahi dekha!\n\n"
+                "📸 Sahi screenshot bhejo jisme *Subscribed*, *Subscribers*, ya *सदस्यता* clearly dikh raha ho.\n"
+                "Channel ke andar se screenshot lo aur dobara bhejo! 🙏",
+                parse_mode="Markdown"
+            )
+            return
+
         user_data[uid]["state"] = "waiting_like"
 
         try:
             await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
             await context.bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
-                text=f"✅ *Step 1 (Subscribe) Paas Ho Gaya!* \n🔢 Bakra: *#{serial}* | 📱 Phone: {device.upper()}",
+                text=f"✅ *Step 1 (Subscribe) OCR se Verify Ho Gaya!* \n🔢 Bakra: *#{serial}* | 📱 Phone: {device.upper()}",
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -151,16 +202,36 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # ─────────────────────────────────────────
-    # STEP 2 — Like Verified
+    # STEP 2 — Like/Video Layout Verified via OCR
     # ─────────────────────────────────────────
     elif state == "waiting_like":
+        processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner ab video check kar raha hai!* ⏳", parse_mode="Markdown")
+
+        photo_file = await update.message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+        is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), LIKE_KEYWORDS)
+
+        try:
+            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=processing_msg.message_id)
+        except Exception:
+            pass
+
+        if not is_verified:
+            await update.message.reply_text(
+                "❌ *Arrey yaar! Yeh valid video ya Shorts screenshot nahi lag raha hai.*\n\n"
+                "🔎 Baba ka scanner video details dhoondh nahi paaya.\n\n"
+                "📸 Sahi se video ko play karke, pure interface (jaise comment/share ke sath) ka screenshot lekar bhejo!",
+                parse_mode="Markdown"
+            )
+            return
+
         user_data[uid]["state"] = "done"
 
         try:
             await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
             await context.bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
-                text=f"👑 *Step 2 (Like) bhi khatam! Link bhej diya.* \n🔢 Bakra: *#{serial}*",
+                text=f"👑 *Step 2 (Like/Video Layout) bhi OCR se pass! Link bhej diya.* \n🔢 Bakra: *#{serial}*",
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -168,14 +239,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await send_reward_link(context, uid, user_data[uid])
 
-
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
     if doc and doc.mime_type and "image" in doc.mime_type:
         await handle_photo(update, context)
     else:
         await update.message.reply_text("🛑 *Oye hero!* Mujhe sirf photo/screenshot chahiye, koi aisi-waisi file mat bhejo! 📸")
-
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -211,7 +280,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     state = user_data.get(uid, {}).get("state", "")
@@ -222,7 +290,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👍 Ek pyara sa Like dabaao video par, aur uska screenshot yahan chipkaao boss!")
     else:
         await update.message.reply_text("Arrey bhai sahab! Seedhe /start likho aur system shuru karo! 😎")
-
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
@@ -241,7 +308,6 @@ def main():
     logger.info("Jugadu Baba Bot is online and laughing...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-
 if __name__ == "__main__":
     main()
-                          
+        
