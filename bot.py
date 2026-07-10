@@ -10,9 +10,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
-# NEW IPHONE LINK UPDATED HERE 👇
-IPHONE_REWARD_LINK = "https://apps.apple.com/in/app/pedal-pit/id6774929829"
-ANDROID_REWARD_LINK = "https://t.me/jugaduBaba0/97"
+IPHONE_REWARD_LINK = "https://babamodsapk.blogspot.com/?m=1"
+ANDROID_REWARD_LINK = "https://babamodsapk.blogspot.com/?m=1"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@JugaduBaba-bmw"
 LINK_DELETE_SECONDS = 30
@@ -86,12 +85,12 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         f"⚠️ *DHYAN SE:* Yeh link sirf `{LINK_DELETE_SECONDS} seconds` mein dhuwan ban ke uuad jayega! 💣\n"
         f"Fatafat click karo, deri mat karna! ⏰"
     )
-    
+
     keyboard = [[InlineKeyboardButton(f"🚀 {device_label} LO!", url=reward_link)]]
-    
+
     sent = await context.bot.send_message(
-        chat_id=uid, 
-        text=reward_text, 
+        chat_id=uid,
+        text=reward_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -128,7 +127,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("🍏 Ameer ka iPhone", callback_data=f"device_iphone_{uid}"),
         InlineKeyboardButton("🤖 Sasta-Tikau Android", callback_data=f"device_android_{uid}"),
     ]]
-    
+
     await update.message.reply_text(
         f"👋 *Aao yaara {user.first_name}! Swagat hai!*\n\n"
         f"🔮 *{YOUTUBE_CHANNEL}* ke gufa mein aapka swagat hai!\n"
@@ -141,7 +140,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
-    
+
     if uid not in user_data:
         await update.message.reply_text("🚨 *Arrey ruko ruko!* Pehle tameez se /start dabao, phir photo bhejiyo! 😂")
         return
@@ -155,7 +154,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🤷‍♂️ *Arrey bhai!* Abhi photo ki koi zaroorat nahi hai. Maze mat lo, /start karo!")
         return
 
-    # STEP 1 — Subscribe Verified
     if state == "waiting_subscribe":
         processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
 
@@ -191,7 +189,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Admin forward failed: {e}")
 
         keyboard = [[InlineKeyboardButton("📺 YouTube Channel", url=YOUTUBE_CHANNEL_URL)]]
-        
         await update.message.reply_text(
             f"🎯 *Wah! Ek teer se ek shikar!* (Subscribe Done) ✅\n"
             f"📊 *Progress:* `[█████░░░░░] 50%` \n\n"
@@ -200,7 +197,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # STEP 2 — Like/Video Layout Verified
     elif state == "waiting_like":
         processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner ab video check kar raha hai!* ⏳", parse_mode="Markdown")
 
@@ -307,4 +303,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
