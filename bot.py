@@ -10,18 +10,24 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
+
 IPHONE_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 ANDROID_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@techjugad-9?si=pAzLXsooI2HpnZSL"
-LINK_DELETE_SECONDS = 60
+
+# 👇 AAPKA HOW TO DOWNLOAD WALA LINK YAHAN SET HAI 👇
+HOW_TO_DOWNLOAD_URL = "https://t.me/Babamodsapkk/15"
+
+# TIMER: 5 Min (300 Seconds)
+LINK_DELETE_SECONDS = 300 
 # ================================
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SUBSCRIBE_KEYWORDS = ["subscribed", "subscribers", "सदस्यता"]
-LIKE_KEYWORDS = ["liked", "like", "पसंद", "share", "remix", "comment"]
+# Keywords for checking both Like and Subscribe in a single image
+COMBINED_KEYWORDS = ["subscribed", "subscribers", "सदस्यता", "liked", "like", "पसंद", "share", "remix", "comment"]
 
 async def verify_image_via_ocr(photo_bytes: bytes, keywords: list) -> tuple[bool, str]:
     try:
@@ -76,17 +82,22 @@ async def send_reward_link(context, uid: int, uinfo: dict):
     reward_link = IPHONE_REWARD_LINK if device == "iphone" else ANDROID_REWARD_LINK
     device_label = "🍏 Kothi-Bangle Wala iPhone Link" if device == "iphone" else "🤖 Desi Android Link"
 
+    # 👇 FINAL STEP: Yahan Reward link ke sath How to Download button lagaya gaya hai 👇
     reward_text = (
         f"🥳 *Mubarak Ho {name}! Chha Gaye Guru!* 🎉\n"
         f"────────────────────────\n"
         f"Baba tumse bohot prasann hue! 🧙‍♂️✨\n"
         f"Sab verify ho gaya hai. Tumhari imandari dekh ke rona aa gaya! 😂\n\n"
-        f"👇 *Neeche dabaao aur maze lo:* 👇\n\n"
-        f"⚠️ *DHYAN SE:* Yeh link sirf `{LINK_DELETE_SECONDS} seconds` mein dhuwan ban ke uuad jayega! 💣\n"
+        f"👇 *Neeche tera INAAM hai, dabaao aur maze lo:* 👇\n\n"
+        f"*(💡 Agar Link se App ya Movie download karna nahi aata, toh pehle 'How to Download' wala video dekh lo!)*\n\n"
+        f"⚠️ *DHYAN SE:* Yeh link sirf `5 Minute` mein dhuwan ban ke ud jayega! 💣\n"
         f"Fatafat click karo, deri mat karna! ⏰"
     )
 
-    keyboard = [[InlineKeyboardButton(f"🚀 {device_label} LO!", url=reward_link)]]
+    keyboard = [
+        [InlineKeyboardButton(f"🚀 {device_label} LO!", url=reward_link)],
+        [InlineKeyboardButton("🎬 How to Download (Tutorial)", url=HOW_TO_DOWNLOAD_URL)]
+    ]
 
     sent = await context.bot.send_message(
         chat_id=uid,
@@ -95,7 +106,6 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         parse_mode="Markdown"
     )
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
@@ -150,87 +160,47 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     serial = uinfo.get("serial", get_serial(uid))
     device = uinfo.get("device", "unknown")
 
-    if state not in ("waiting_subscribe", "waiting_like"):
+    if state != "waiting_screenshot":
         await update.message.reply_text("🤷‍♂️ *Arrey bhai!* Abhi photo ki koi zaroorat nahi hai. Maze mat lo, /start karo!")
         return
 
-    if state == "waiting_subscribe":
-        processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
+    # Single Step Verification Process
+    processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Like aur Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
 
-        photo_file = await update.message.photo[-1].get_file()
-        photo_bytes = await photo_file.download_as_bytearray()
-        is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), SUBSCRIBE_KEYWORDS)
+    photo_file = await update.message.photo[-1].get_file()
+    photo_bytes = await photo_file.download_as_bytearray()
+    
+    # Check for combined keywords (Both Subscribe + Like in one screenshot)
+    is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), COMBINED_KEYWORDS)
 
-        try:
-            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=processing_msg.message_id)
-        except Exception:
-            pass
+    try:
+        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=processing_msg.message_id)
+    except Exception:
+        pass
 
-        if not is_verified:
-            await update.message.reply_text(
-                "❌ *Arey bhai! Yeh kya bheja?*\n\n"
-                "🔎 Baba ke scanner ne koi subscription nahi dekha!\n\n"
-                "📸 Sahi screenshot bhejo jisme *Subscribed*, *Subscribers*, ya *सदस्यता* clearly dikh raha ho.\n"
-                "Channel ke andar se screenshot lo aur dobara bhejo! 🙏",
-                parse_mode="Markdown"
-            )
-            return
-
-        user_data[uid]["state"] = "waiting_like"
-
-        try:
-            await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"✅ *Step 1 (Subscribe) OCR se Verify Ho Gaya!* \n🔢 Bakra: *#{serial}* | 📱 Phone: {device.upper()}",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Admin forward failed: {e}")
-
-        keyboard = [[InlineKeyboardButton("📺 YouTube Channel", url=YOUTUBE_CHANNEL_URL)]]
+    if not is_verified:
         await update.message.reply_text(
-            f"🎯 *Wah! Ek teer se ek shikar!* (Subscribe Done) ✅\n"
-            f"📊 *Progress:* `[█████░░░░░] 50%` \n\n"
-            f"🔥 *Ab aakhri kaam:* Niche wale button se jaake kisi bhi ek video ko 👍 *Like* thoko, aur uska screenshot yahan chipkao! 📸",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            "❌ *Arey bhai! Yeh kya bheja? Scanner fail ho gaya!*\n\n"
+            "🔎 Lagta hai aapne thik se *Like* ya *Subscribe* nahi kiya hai.\n\n"
+            "📸 YouTube app mein jao, video ko Like thoko, Subscribe karo aur ek hi clear screenshot bhejo jisme dono dikh rahe hon! 🙏",
             parse_mode="Markdown"
         )
+        return
 
-    elif state == "waiting_like":
-        processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner ab video check kar raha hai!* ⏳", parse_mode="Markdown")
+    user_data[uid]["state"] = "done"
 
-        photo_file = await update.message.photo[-1].get_file()
-        photo_bytes = await photo_file.download_as_bytearray()
-        is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), LIKE_KEYWORDS)
+    try:
+        await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=f"✅ *Task Complete! OCR se Verify Ho Gaya!* \n🔢 Bakra: *#{serial}* | 📱 Phone: {device.upper()}\nLink bhej diya gaya hai!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Admin forward failed: {e}")
 
-        try:
-            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=processing_msg.message_id)
-        except Exception:
-            pass
-
-        if not is_verified:
-            await update.message.reply_text(
-                "❌ *Arrey yaar! Yeh valid video ya Shorts screenshot nahi lag raha hai.*\n\n"
-                "🔎 Baba ka scanner video details dhoondh nahi paaya.\n\n"
-                "📸 Sahi se video ko play karke, pure interface (jaise comment/share ke sath) ka screenshot lekar bhejo!",
-                parse_mode="Markdown"
-            )
-            return
-
-        user_data[uid]["state"] = "done"
-
-        try:
-            await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"👑 *Step 2 (Like/Video Layout) bhi OCR se pass! Link bhej diya.* \n🔢 Bakra: *#{serial}*",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Admin forward failed: {e}")
-
-        await send_reward_link(context, uid, user_data[uid])
+    # Process complete, send the reward link (Final Step)
+    await send_reward_link(context, uid, user_data[uid])
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
@@ -249,26 +219,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("⏳ Kahani khatam, paisa hazam! Session expire ho gaya, firse /start karo.")
         return
 
-    keyboard = [[InlineKeyboardButton("📺 YouTube Link Pe Jaao", url=YOUTUBE_CHANNEL_URL)]]
+    keyboard = [
+        [InlineKeyboardButton("📺 YouTube Channel Pe Jaao", url=YOUTUBE_CHANNEL_URL)]
+    ]
 
     if data.startswith("device_iphone_"):
         user_data[uid]["device"] = "iphone"
-        user_data[uid]["state"] = "waiting_subscribe"
+        user_data[uid]["state"] = "waiting_screenshot"
         await query.edit_message_text(
             f"🍏 *Oho! Kothi-Bangle wale log! iPhone select kiya!*\n"
             f"📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
-            f"👉 *Step 1:* Niche button pe click karke channel ko *Subscribe* karo aur screenshot yahan bhej do! 📸",
+            f"👉 *STEP 1:* Niche diye gaye **YouTube Channel** button pe jao, ek video ko *Like* karo aur channel *Subscribe* karo.\n\n"
+            f"📸 *STEP 2:* Phir ek hi screenshot lo (jisme Subscribe + Like dono dikhe) aur yahan bhej do!",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
 
     elif data.startswith("device_android_"):
         user_data[uid]["device"] = "android"
-        user_data[uid]["state"] = "waiting_subscribe"
+        user_data[uid]["state"] = "waiting_screenshot"
         await query.edit_message_text(
             f"🤖 *Zindabad! Desi Android select kiya! Humara wala phone!*\n"
             f"📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
-            f"👉 *Step 1:* Niche button pe click karke channel ko *Subscribe* karo aur screenshot yahan bhej do! 📸",
+            f"👉 *STEP 1:* Niche diye gaye **YouTube Channel** button pe jao, ek video ko *Like* karo aur channel *Subscribe* karo.\n\n"
+            f"📸 *STEP 2:* Phir ek hi screenshot lo (jisme Subscribe + Like dono dikhe) aur yahan bhej do!",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
@@ -277,10 +251,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     state = user_data.get(uid, {}).get("state", "")
 
-    if state == "waiting_subscribe":
-        await update.message.reply_text("☝️ Baatein kam, kaam zyada! Pehle channel Subscribe karo aur screenshot bhejo! 📸")
-    elif state == "waiting_like":
-        await update.message.reply_text("👍 Ek pyara sa Like dabaao video par, aur uska screenshot yahan chipkaao boss!")
+    if state == "waiting_screenshot":
+        await update.message.reply_text("☝️ Baatein kam, kaam zyada! Video ko Like aur Subscribe karke ek hi screenshot yahan bhejo! 📸")
     else:
         await update.message.reply_text("Arrey bhai sahab! Seedhe /start likho aur system shuru karo! 😎")
 
