@@ -17,7 +17,7 @@ YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@techjugad-9?si=pAzLXsooI2HpnZSL"
 
 # 👇 AAPKA HOW TO DOWNLOAD WALA LINK YAHAN SET HAI 👇
-HOW_TO_DOWNLOAD_URL = "https://t.me/Babamodsapkk/15"
+HOW_TO_DOWNLOAD_URL = "https://t.me/jugaduBaba0/156"
 
 # TIMER: 5 Min (300 Seconds)
 LINK_DELETE_SECONDS = 300 
