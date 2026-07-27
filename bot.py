@@ -30,7 +30,7 @@ ANDROID_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@techjugad-9?si=pAzLXsooI2HpnZSL"
 HOW_TO_DOWNLOAD_URL = "https://t.me/jugaduBaba0/156"
-LINK_DELETE_SECONDS = 300 
+LINK_DELETE_SECONDS = 300
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -113,8 +113,8 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         parse_mode="Markdown"
     )
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
-    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     serial = get_serial(uid)
@@ -176,7 +176,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
-    
+
     is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), COMBINED_KEYWORDS)
 
     try:
@@ -282,4 +282,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
