@@ -21,6 +21,24 @@ def keep_alive():
     t = Thread(target=run_flask)
     t.start()
 
+SELF_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://yt-appbot.onrender.com")
+PING_INTERVAL_SECONDS = 600  # 10 minutes, safely under Render's 15-min sleep limit
+
+def self_ping():
+    import time
+    import requests
+    while True:
+        time.sleep(PING_INTERVAL_SECONDS)
+        try:
+            r = requests.get(SELF_URL, timeout=15)
+            logger.info(f"Self-ping ok: {r.status_code}")
+        except Exception as e:
+            logger.error(f"Self-ping failed: {e}")
+
+def start_self_ping():
+    t = Thread(target=self_ping, daemon=True)
+    t.start()
+
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
@@ -268,6 +286,7 @@ def main():
         raise ValueError("ADMIN_CHAT_ID set nahi hai!")
 
     keep_alive()
+    start_self_ping()
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
