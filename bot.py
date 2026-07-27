@@ -3,8 +3,25 @@ import logging
 import asyncio
 import base64
 import httpx
+from flask import Flask
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+
+# ============ FLASK KEEP-ALIVE SERVER (Render ke liye) ============
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
+# =================================================================
 
 # ============ CONFIG ============
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -16,17 +33,14 @@ ANDROID_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@techjugad-9?si=pAzLXsooI2HpnZSL"
 
-# 👇 AAPKA HOW TO DOWNLOAD WALA LINK YAHAN SET HAI 👇
 HOW_TO_DOWNLOAD_URL = "https://t.me/jugaduBaba0/156"
 
-# TIMER: 5 Min (300 Seconds)
 LINK_DELETE_SECONDS = 300 
 # ================================
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Keywords for checking both Like and Subscribe in a single image
 COMBINED_KEYWORDS = ["subscribed", "subscribers", "सदस्यता", "liked", "like", "पसंद", "share", "remix", "comment"]
 
 async def verify_image_via_ocr(photo_bytes: bytes, keywords: list) -> tuple[bool, str]:
@@ -82,7 +96,6 @@ async def send_reward_link(context, uid: int, uinfo: dict):
     reward_link = IPHONE_REWARD_LINK if device == "iphone" else ANDROID_REWARD_LINK
     device_label = "🍏 Kothi-Bangle Wala iPhone Link" if device == "iphone" else "🤖 Desi Android Link"
 
-    # 👇 FINAL STEP: Yahan Reward link ke sath How to Download button lagaya gaya hai 👇
     reward_text = (
         f"🥳 *Mubarak Ho {name}! Chha Gaye Guru!* 🎉\n"
         f"────────────────────────\n"
@@ -106,7 +119,7 @@ async def send_reward_link(context, uid: int, uinfo: dict):
         parse_mode="Markdown"
     )
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     serial = get_serial(uid)
@@ -164,13 +177,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🤷‍♂️ *Arrey bhai!* Abhi photo ki koi zaroorat nahi hai. Maze mat lo, /start karo!")
         return
 
-    # Single Step Verification Process
     processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Like aur Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
 
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
     
-    # Check for combined keywords (Both Subscribe + Like in one screenshot)
     is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), COMBINED_KEYWORDS)
 
     try:
@@ -199,7 +210,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Admin forward failed: {e}")
 
-    # Process complete, send the reward link (Final Step)
     await send_reward_link(context, uid, user_data[uid])
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -262,6 +272,9 @@ def main():
     if not ADMIN_CHAT_ID or ADMIN_CHAT_ID == 0:
         raise ValueError("ADMIN_CHAT_ID set nahi hai!")
 
+    # Flask server ko background me chalu karne ke liye
+    keep_alive()
+
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -275,3 +288,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
