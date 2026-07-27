@@ -114,6 +114,7 @@ async def send_reward_link(context, uid: int, uinfo: dict):
     )
     asyncio.create_task(delete_message_later(context, uid, sent.message_id, LINK_DELETE_SECONDS))
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        
     user = update.effective_user
     uid = user.id
     serial = get_serial(uid)
