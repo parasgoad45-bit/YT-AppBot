@@ -53,7 +53,109 @@ LINK_DELETE_SECONDS = 300
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# OCR keywords cover both Hindi and English so screenshot verification
+# works no matter which language the user picked in the bot.
 COMBINED_KEYWORDS = ["subscribed", "subscribers", "सदस्यता", "liked", "like", "पसंद", "share", "remix", "comment"]
+
+def escape_md(text: str) -> str:
+    """Escape Telegram legacy Markdown special characters so user-supplied
+    text (like names) can't break message parsing."""
+    if not text:
+        return text
+    for ch in ["_", "*", "`", "["]:
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+# ---------------------------------------------------------------------------
+# All user-facing text, in Hindi and English. Pick with TEXTS[lang][key].
+# ---------------------------------------------------------------------------
+TEXTS = {
+    "hi": {
+        "choose_language": "🌐 *Kripya apni language chunein:*",
+        "welcome": (
+            "👋 *Namaste {name}! Swagat hai!*\n\n"
+            "🔮 *{channel}* channel mein aapka swagat hai!\n"
+            "Reward pane ke liye pehle ek chota sa verification karna hoga. 😊\n\n"
+            "📱 *Sabse pehle batayein, aap kaunsa phone use karte hain?*"
+        ),
+        "device_iphone_btn": "🍏 iPhone",
+        "device_android_btn": "🤖 Android",
+        "youtube_btn": "📺 YouTube Channel Pe Jaayein",
+        "device_selected": (
+            "{emoji} *{device_name} select kiya gaya!*\n"
+            "📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
+            "👉 *STEP 1:* Neeche diye gaye **YouTube Channel** button pe jaayein, video ko *Like* karein aur channel *Subscribe* karein.\n\n"
+            "📸 *STEP 2:* Fir ek screenshot lein (jisme Subscribe + Like dono dikhein) aur yahan bhej dein!"
+        ),
+        "need_start_first": "🚨 Pehle /start command bhejein, uske baad hi photo bhejein. 😊",
+        "no_photo_needed": "🤷‍♂️ Abhi photo bhejne ki zaroorat nahi hai. Pehle /start karein.",
+        "processing": "🔍 *Ruko zara... Aapki screenshot check ki jaa rahi hai!* ⏳",
+        "verify_fail": (
+            "❌ *Verification fail ho gaya!*\n\n"
+            "🔎 Lagta hai aapne screenshot mein *Like* ya *Subscribe* clearly nahi dikhaya hai.\n\n"
+            "📸 YouTube app mein jaake video ko Like karein, channel ko Subscribe karein, aur ek clear screenshot bhejein jisme dono dikhein! 🙏"
+        ),
+        "only_photo": "🛑 Sirf photo/screenshot bhejein, koi aur file nahi. 📸",
+        "session_expired": "⏳ Session expire ho gaya hai. Please dobara /start karein.",
+        "waiting_screenshot_text": "☝️ Pehle video ko Like aur channel ko Subscribe karke, ek screenshot bhejein. 📸",
+        "start_prompt_text": "Shuru karne ke liye /start command bhejein. 😊",
+        "reward": (
+            "🥳 *Badhai Ho {name}!* 🎉\n"
+            "────────────────────────\n"
+            "Aapka verification successful ho gaya hai. ✅\n\n"
+            "👇 *Neeche diye button se apna reward link lein:* 👇\n\n"
+            "*(💡 Agar app ya movie download karna nahi aata hai, toh pehle 'How to Download' video dekh lein)*\n\n"
+            "⚠️ *Dhyan dein:* Yeh link sirf `5 minute` ke liye valid hai! 💣\n"
+            "Jaldi click karein, deri mat karein! ⏰"
+        ),
+        "reward_btn": "🚀 {device_label} Lein!",
+        "download_btn": "🎬 How to Download (Tutorial)",
+    },
+    "en": {
+        "choose_language": "🌐 *Please choose your language:*",
+        "welcome": (
+            "👋 *Hello {name}! Welcome!*\n\n"
+            "🔮 Welcome to *{channel}* channel!\n"
+            "To claim your reward, you first need a quick verification. 😊\n\n"
+            "📱 *First, tell us which phone you use:*"
+        ),
+        "device_iphone_btn": "🍏 iPhone",
+        "device_android_btn": "🤖 Android",
+        "youtube_btn": "📺 Go to YouTube Channel",
+        "device_selected": (
+            "{emoji} *{device_name} selected!*\n"
+            "📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
+            "👉 *STEP 1:* Tap the **YouTube Channel** button below, *Like* the video and *Subscribe* to the channel.\n\n"
+            "📸 *STEP 2:* Then take one screenshot showing both Subscribe + Like, and send it here!"
+        ),
+        "need_start_first": "🚨 Please send /start first, then send your screenshot. 😊",
+        "no_photo_needed": "🤷‍♂️ No need to send a photo right now. Please /start first.",
+        "processing": "🔍 *Hold on... checking your screenshot!* ⏳",
+        "verify_fail": (
+            "❌ *Verification failed!*\n\n"
+            "🔎 It looks like your screenshot doesn't clearly show *Like* or *Subscribe*.\n\n"
+            "📸 Go to the YouTube app, Like the video, Subscribe to the channel, and send one clear screenshot showing both! 🙏"
+        ),
+        "only_photo": "🛑 Please send only a photo/screenshot, no other file type. 📸",
+        "session_expired": "⏳ Your session has expired. Please /start again.",
+        "waiting_screenshot_text": "☝️ Please Like the video and Subscribe to the channel first, then send one screenshot. 📸",
+        "start_prompt_text": "Send the /start command to begin. 😊",
+        "reward": (
+            "🥳 *Congratulations {name}!* 🎉\n"
+            "────────────────────────\n"
+            "Your verification was successful. ✅\n\n"
+            "👇 *Tap the button below to get your reward link:* 👇\n\n"
+            "*(💡 If you don't know how to download the app or movie from the link, watch the 'How to Download' video first)*\n\n"
+            "⚠️ *Note:* This link is valid for only `5 minutes`! 💣\n"
+            "Click quickly, don't delay! ⏰"
+        ),
+        "reward_btn": "🚀 Get {device_label}!",
+        "download_btn": "🎬 How to Download (Tutorial)",
+    },
+}
+
+def get_lang(uid: int) -> str:
+    return user_data.get(uid, {}).get("lang", "hi")
 
 async def verify_image_via_ocr(photo_bytes: bytes, keywords: list) -> tuple[bool, str]:
     try:
@@ -103,25 +205,18 @@ async def delete_message_later(context, chat_id, message_id, delay):
         logger.error(f"Delete error: {e}")
 
 async def send_reward_link(context, uid: int, uinfo: dict):
+    lang = uinfo.get("lang", "hi")
+    T = TEXTS[lang]
     device = uinfo.get("device", "iphone")
-    name = uinfo.get("name", "User")
+    name = escape_md(uinfo.get("name", "User"))
     reward_link = IPHONE_REWARD_LINK if device == "iphone" else ANDROID_REWARD_LINK
-    device_label = "🍏 Kothi-Bangle Wala iPhone Link" if device == "iphone" else "🤖 Desi Android Link"
+    device_label = "iPhone Link" if device == "iphone" else "Android Link"
 
-    reward_text = (
-        f"🥳 *Mubarak Ho {name}! Chha Gaye Guru!* 🎉\n"
-        f"────────────────────────\n"
-        f"Baba tumse bohot prasann hue! 🧙‍♂️✨\n"
-        f"Sab verify ho gaya hai. Tumhari imandari dekh ke rona aa gaya! 😂\n\n"
-        f"👇 *Neeche tera INAAM hai, dabaao aur maze lo:* 👇\n\n"
-        f"*(💡 Agar Link se App ya Movie download karna nahi aata, toh pehle 'How to Download' wala video dekh lo!)*\n\n"
-        f"⚠️ *DHYAN SE:* Yeh link sirf `5 Minute` mein dhuwan ban ke ud jayega! 💣\n"
-        f"Fatafat click karo, deri mat karna! ⏰"
-    )
+    reward_text = T["reward"].format(name=name)
 
     keyboard = [
-        [InlineKeyboardButton(f"🚀 {device_label} LO!", url=reward_link)],
-        [InlineKeyboardButton("🎬 How to Download (Tutorial)", url=HOW_TO_DOWNLOAD_URL)]
+        [InlineKeyboardButton(T["reward_btn"].format(device_label=device_label), url=reward_link)],
+        [InlineKeyboardButton(T["download_btn"], url=HOW_TO_DOWNLOAD_URL)]
     ]
 
     sent = await context.bot.send_message(
@@ -136,23 +231,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     serial = get_serial(uid)
+    safe_name = escape_md(user.first_name)
+    safe_username = escape_md(user.username) if user.username else "N/A"
 
     user_data[uid] = {
-        "state": "choosing_device",
+        "state": "choosing_language",
         "name": user.first_name,
         "username": user.username or "N/A",
         "serial": serial,
+        "lang": "hi",
     }
 
     try:
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=(
-                f"🕵️‍♂️ *BABA! Naya Bakra Hazir Hai — #{serial}*\n"
+                f"🔔 *Naya User Aaya Hai — #{serial}*\n"
                 f"────────────────────────\n"
-                f"👤 *Naam:* {user.first_name}\n"
+                f"👤 *Naam:* {safe_name}\n"
                 f"🆔 *ID:* `{uid}`\n"
-                f"🔗 *Username:* @{user.username or 'N/A'}"
+                f"🔗 *Username:* @{safe_username}"
             ),
             parse_mode="Markdown"
         )
@@ -160,15 +258,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Admin notification failed: {e}")
 
     keyboard = [[
-        InlineKeyboardButton("🍏 Ameer ka iPhone", callback_data=f"device_iphone_{uid}"),
-        InlineKeyboardButton("🤖 Sasta-Tikau Android", callback_data=f"device_android_{uid}"),
+        InlineKeyboardButton("🇮🇳 हिंदी", callback_data=f"lang_hi_{uid}"),
+        InlineKeyboardButton("🇬🇧 English", callback_data=f"lang_en_{uid}"),
     ]]
 
     await update.message.reply_text(
-        f"👋 *Aao yaara {user.first_name}! Swagat hai!*\n\n"
-        f"🔮 *{YOUTUBE_CHANNEL}* ke gufa mein aapka swagat hai!\n"
-        f"Yahan sab milega, par pehle ek chota sa test. 😉\n\n"
-        f"📱 *Pehle ye batao, jeb mein kaunsa maal hai?*",
+        "🌐 *Kripya apni language chunein / Please choose your language:*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -176,9 +271,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
+    lang = get_lang(uid)
+    T = TEXTS[lang]
 
     if uid not in user_data:
-        await update.message.reply_text("🚨 *Arrey ruko ruko!* Pehle tameez se /start dabao, phir photo bhejiyo! 😂")
+        await update.message.reply_text(T["need_start_first"])
         return
 
     uinfo = user_data[uid]
@@ -187,14 +284,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     device = uinfo.get("device", "unknown")
 
     if state != "waiting_screenshot":
-        await update.message.reply_text("🤷‍♂️ *Arrey bhai!* Abhi photo ki koi zaroorat nahi hai. Maze mat lo, /start karo!")
+        await update.message.reply_text(T["no_photo_needed"])
         return
 
-    processing_msg = await update.message.reply_text("🔍 *Ruko zara... Baba ka scanner Like aur Subscribe check kar raha hai!* ⏳", parse_mode="Markdown")
+    processing_msg = await update.message.reply_text(T["processing"], parse_mode="Markdown")
 
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
 
+    # Keywords include both Hindi and English terms, so verification works
+    # correctly regardless of which language the user selected.
     is_verified, _ = await verify_image_via_ocr(bytes(photo_bytes), COMBINED_KEYWORDS)
 
     try:
@@ -203,12 +302,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
     if not is_verified:
-        await update.message.reply_text(
-            "❌ *Arey bhai! Yeh kya bheja? Scanner fail ho gaya!*\n\n"
-            "🔎 Lagta hai aapne thik se *Like* ya *Subscribe* nahi kiya hai.\n\n"
-            "📸 YouTube app mein jao, video ko Like thoko, Subscribe karo aur ek hi clear screenshot bhejo jisme dono dikh rahe hon! 🙏",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(T["verify_fail"], parse_mode="Markdown")
         return
 
     user_data[uid]["state"] = "done"
@@ -217,7 +311,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
-            text=f"✅ *Task Complete! OCR se Verify Ho Gaya!* \n🔢 Bakra: *#{serial}* | 📱 Phone: {device.upper()}\nLink bhej diya gaya hai!",
+            text=f"✅ *Verification Complete!* \n🔢 User: *#{serial}* | 📱 Phone: {device.upper()}\nReward link bhej diya gaya hai!",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -230,7 +324,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if doc and doc.mime_type and "image" in doc.mime_type:
         await handle_photo(update, context)
     else:
-        await update.message.reply_text("🛑 *Oye hero!* Mujhe sirf photo/screenshot chahiye, koi aisi-waisi file mat bhejo! 📸")
+        uid = update.effective_user.id
+        lang = get_lang(uid)
+        await update.message.reply_text(TEXTS[lang]["only_photo"])
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -239,21 +335,55 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = update.effective_user.id
     if uid not in user_data:
-        await query.message.reply_text("⏳ Kahani khatam, paisa hazam! Session expire ho gaya, firse /start karo.")
+        lang = "hi"
+        await query.message.reply_text(TEXTS[lang]["session_expired"])
         return
 
+    # --- Language selection ---
+    if data.startswith("lang_hi_"):
+        user_data[uid]["lang"] = "hi"
+        user_data[uid]["state"] = "choosing_device"
+        T = TEXTS["hi"]
+        safe_name = escape_md(user_data[uid].get("name", "User"))
+        keyboard = [[
+            InlineKeyboardButton(T["device_iphone_btn"], callback_data=f"device_iphone_{uid}"),
+            InlineKeyboardButton(T["device_android_btn"], callback_data=f"device_android_{uid}"),
+        ]]
+        await query.edit_message_text(
+            T["welcome"].format(name=safe_name, channel=YOUTUBE_CHANNEL),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("lang_en_"):
+        user_data[uid]["lang"] = "en"
+        user_data[uid]["state"] = "choosing_device"
+        T = TEXTS["en"]
+        safe_name = escape_md(user_data[uid].get("name", "User"))
+        keyboard = [[
+            InlineKeyboardButton(T["device_iphone_btn"], callback_data=f"device_iphone_{uid}"),
+            InlineKeyboardButton(T["device_android_btn"], callback_data=f"device_android_{uid}"),
+        ]]
+        await query.edit_message_text(
+            T["welcome"].format(name=safe_name, channel=YOUTUBE_CHANNEL),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return
+
+    # --- Device selection ---
+    lang = get_lang(uid)
+    T = TEXTS[lang]
     keyboard = [
-        [InlineKeyboardButton("📺 YouTube Channel Pe Jaao", url=YOUTUBE_CHANNEL_URL)]
+        [InlineKeyboardButton(T["youtube_btn"], url=YOUTUBE_CHANNEL_URL)]
     ]
 
     if data.startswith("device_iphone_"):
         user_data[uid]["device"] = "iphone"
         user_data[uid]["state"] = "waiting_screenshot"
         await query.edit_message_text(
-            f"🍏 *Oho! Kothi-Bangle wale log! iPhone select kiya!*\n"
-            f"📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
-            f"👉 *STEP 1:* Niche diye gaye **YouTube Channel** button pe jao, ek video ko *Like* karo aur channel *Subscribe* karo.\n\n"
-            f"📸 *STEP 2:* Phir ek hi screenshot lo (jisme Subscribe + Like dono dikhe) aur yahan bhej do!",
+            T["device_selected"].format(emoji="🍏", device_name="iPhone"),
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
@@ -262,22 +392,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[uid]["device"] = "android"
         user_data[uid]["state"] = "waiting_screenshot"
         await query.edit_message_text(
-            f"🤖 *Zindabad! Desi Android select kiya! Humara wala phone!*\n"
-            f"📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
-            f"👉 *STEP 1:* Niche diye gaye **YouTube Channel** button pe jao, ek video ko *Like* karo aur channel *Subscribe* karo.\n\n"
-            f"📸 *STEP 2:* Phir ek hi screenshot lo (jisme Subscribe + Like dono dikhe) aur yahan bhej do!",
+            T["device_selected"].format(emoji="🤖", device_name="Android"),
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    lang = get_lang(uid)
+    T = TEXTS[lang]
     state = user_data.get(uid, {}).get("state", "")
 
     if state == "waiting_screenshot":
-        await update.message.reply_text("☝️ Baatein kam, kaam zyada! Video ko Like aur Subscribe karke ek hi screenshot yahan bhejo! 📸")
+        await update.message.reply_text(T["waiting_screenshot_text"])
     else:
-        await update.message.reply_text("Arrey bhai sahab! Seedhe /start likho aur system shuru karo! 😎")
+        await update.message.reply_text(T["start_prompt_text"])
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
