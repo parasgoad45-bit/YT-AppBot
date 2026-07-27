@@ -71,7 +71,50 @@ def escape_md(text: str) -> str:
 # ---------------------------------------------------------------------------
 TEXTS = {
     "hi": {
-        "choose_language": "🌐 *Kripya apni language chunein:*",
+        "choose_language": "🌐 *कृपया अपनी भाषा चुनें:*",
+        "welcome": (
+            "👋 *नमस्ते {name}! स्वागत है!*\n\n"
+            "🔮 *{channel}* चैनल में आपका स्वागत है!\n"
+            "रिवॉर्ड पाने के लिए पहले एक छोटा सा वेरिफिकेशन करना होगा। 😊\n\n"
+            "📱 *सबसे पहले बताएं, आप कौन सा फ़ोन इस्तेमाल करते हैं?*"
+        ),
+        "device_iphone_btn": "🍏 आईफोन",
+        "device_android_btn": "🤖 एंड्रॉइड",
+        "youtube_btn": "📺 यूट्यूब चैनल पर जाएं",
+        "device_selected": (
+            "{emoji} *{device_name} चुना गया!*\n"
+            "📊 *प्रगति:* `[░░░░░░░░░░] 0%` \n\n"
+            "👉 *स्टेप 1:* नीचे दिए गए **यूट्यूब चैनल** बटन पर जाएं, वीडियो को *लाइक* करें और चैनल को *सब्सक्राइब* करें।\n\n"
+            "📸 *स्टेप 2:* फिर एक स्क्रीनशॉट लें (जिसमें सब्सक्राइब + लाइक दोनों दिखें) और यहां भेज दें!"
+        ),
+        "need_start_first": "🚨 पहले /start कमांड भेजें, उसके बाद ही फोटो भेजें। 😊",
+        "no_photo_needed": "🤷‍♂️ अभी फोटो भेजने की ज़रूरत नहीं है। पहले /start करें।",
+        "processing": "🔍 *रुकिए ज़रा... आपकी स्क्रीनशॉट चेक की जा रही है!* ⏳",
+        "verify_fail": (
+            "❌ *वेरिफिकेशन फेल हो गया!*\n\n"
+            "🔎 लगता है आपने स्क्रीनशॉट में *लाइक* या *सब्सक्राइब* साफ़ तौर पर नहीं दिखाया है।\n\n"
+            "📸 यूट्यूब ऐप में जाकर वीडियो को लाइक करें, चैनल को सब्सक्राइब करें, और एक साफ़ स्क्रीनशॉट भेजें जिसमें दोनों दिखें! 🙏"
+        ),
+        "only_photo": "🛑 सिर्फ़ फोटो/स्क्रीनशॉट भेजें, कोई और फ़ाइल नहीं। 📸",
+        "session_expired": "⏳ सेशन समाप्त हो गया है। कृपया दोबारा /start करें।",
+        "waiting_screenshot_text": "☝️ पहले वीडियो को लाइक और चैनल को सब्सक्राइब करके, एक स्क्रीनशॉट भेजें। 📸",
+        "start_prompt_text": "शुरू करने के लिए /start कमांड भेजें। 😊",
+        "reward": (
+            "🥳 *बधाई हो {name}!* 🎉\n"
+            "────────────────────────\n"
+            "आपका वेरिफिकेशन सफल हो गया है। ✅\n\n"
+            "👇 *नीचे दिए बटन से अपना रिवॉर्ड लिंक लें:* 👇\n\n"
+            "*(💡 अगर ऐप या मूवी डाउनलोड करना नहीं आता है, तो पहले 'How to Download' वीडियो देख लें)*\n\n"
+            "⚠️ *ध्यान दें:* यह लिंक सिर्फ़ `5 मिनट` के लिए मान्य है! 💣\n"
+            "जल्दी क्लिक करें, देरी मत करें! ⏰"
+        ),
+        "reward_btn": "🚀 {device_label} लें!",
+        "download_btn": "🎬 डाउनलोड कैसे करें (ट्यूटोरियल)",
+        "iphone_label": "आईफोन लिंक",
+        "android_label": "एंड्रॉइड लिंक",
+    },
+    "en": {
+        "choose_language": "🌐 *Kripya apni language chunein / Please choose your language:*",
         "welcome": (
             "👋 *Namaste {name}! Swagat hai!*\n\n"
             "🔮 *{channel}* channel mein aapka swagat hai!\n"
@@ -110,47 +153,8 @@ TEXTS = {
         ),
         "reward_btn": "🚀 {device_label} Lein!",
         "download_btn": "🎬 How to Download (Tutorial)",
-    },
-    "en": {
-        "choose_language": "🌐 *Please choose your language:*",
-        "welcome": (
-            "👋 *Hello {name}! Welcome!*\n\n"
-            "🔮 Welcome to *{channel}* channel!\n"
-            "To claim your reward, you first need a quick verification. 😊\n\n"
-            "📱 *First, tell us which phone you use:*"
-        ),
-        "device_iphone_btn": "🍏 iPhone",
-        "device_android_btn": "🤖 Android",
-        "youtube_btn": "📺 Go to YouTube Channel",
-        "device_selected": (
-            "{emoji} *{device_name} selected!*\n"
-            "📊 *Progress:* `[░░░░░░░░░░] 0%` \n\n"
-            "👉 *STEP 1:* Tap the **YouTube Channel** button below, *Like* the video and *Subscribe* to the channel.\n\n"
-            "📸 *STEP 2:* Then take one screenshot showing both Subscribe + Like, and send it here!"
-        ),
-        "need_start_first": "🚨 Please send /start first, then send your screenshot. 😊",
-        "no_photo_needed": "🤷‍♂️ No need to send a photo right now. Please /start first.",
-        "processing": "🔍 *Hold on... checking your screenshot!* ⏳",
-        "verify_fail": (
-            "❌ *Verification failed!*\n\n"
-            "🔎 It looks like your screenshot doesn't clearly show *Like* or *Subscribe*.\n\n"
-            "📸 Go to the YouTube app, Like the video, Subscribe to the channel, and send one clear screenshot showing both! 🙏"
-        ),
-        "only_photo": "🛑 Please send only a photo/screenshot, no other file type. 📸",
-        "session_expired": "⏳ Your session has expired. Please /start again.",
-        "waiting_screenshot_text": "☝️ Please Like the video and Subscribe to the channel first, then send one screenshot. 📸",
-        "start_prompt_text": "Send the /start command to begin. 😊",
-        "reward": (
-            "🥳 *Congratulations {name}!* 🎉\n"
-            "────────────────────────\n"
-            "Your verification was successful. ✅\n\n"
-            "👇 *Tap the button below to get your reward link:* 👇\n\n"
-            "*(💡 If you don't know how to download the app or movie from the link, watch the 'How to Download' video first)*\n\n"
-            "⚠️ *Note:* This link is valid for only `5 minutes`! 💣\n"
-            "Click quickly, don't delay! ⏰"
-        ),
-        "reward_btn": "🚀 Get {device_label}!",
-        "download_btn": "🎬 How to Download (Tutorial)",
+        "iphone_label": "iPhone Link",
+        "android_label": "Android Link",
     },
 }
 
@@ -210,7 +214,7 @@ async def send_reward_link(context, uid: int, uinfo: dict):
     device = uinfo.get("device", "iphone")
     name = escape_md(uinfo.get("name", "User"))
     reward_link = IPHONE_REWARD_LINK if device == "iphone" else ANDROID_REWARD_LINK
-    device_label = "iPhone Link" if device == "iphone" else "Android Link"
+    device_label = T["iphone_label"] if device == "iphone" else T["android_label"]
 
     reward_text = T["reward"].format(name=name)
 
