@@ -272,7 +272,6 @@ def main():
     if not ADMIN_CHAT_ID or ADMIN_CHAT_ID == 0:
         raise ValueError("ADMIN_CHAT_ID set nahi hai!")
 
-    # Flask server ko background me chalu karne ke liye
     keep_alive()
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
