@@ -8,7 +8,6 @@ from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-# ============ FLASK KEEP-ALIVE SERVER (Render ke liye) ============
 app = Flask('')
 
 @app.route('/')
@@ -21,9 +20,7 @@ def run_flask():
 def keep_alive():
     t = Thread(target=run_flask)
     t.start()
-# =================================================================
 
-# ============ CONFIG ============
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
@@ -32,11 +29,8 @@ IPHONE_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 ANDROID_REWARD_LINK = "https://jugadutech2026.blogspot.com/?m=1"
 YOUTUBE_CHANNEL = "Jugadu Baba"
 YOUTUBE_CHANNEL_URL = "https://youtube.com/@techjugad-9?si=pAzLXsooI2HpnZSL"
-
 HOW_TO_DOWNLOAD_URL = "https://t.me/jugaduBaba0/156"
-
 LINK_DELETE_SECONDS = 300 
-# ================================
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -287,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
